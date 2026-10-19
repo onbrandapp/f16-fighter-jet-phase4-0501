@@ -75,6 +75,7 @@ export class JetScene {
   private fovScale = 1;
   private ro: ResizeObserver;
   private disposed = false;
+  private paused = false;
   private frameTimes: number[] = [];
   private pixelRatio: number;
   private fadeEl: HTMLElement | null;
@@ -255,6 +256,11 @@ export class JetScene {
     const loop = () => {
       if (this.disposed) return;
       this.raf = requestAnimationFrame(loop);
+      // keep a running move on schedule even off-screen, but skip GPU work
+      if (this.paused && !this.busy) {
+        this.last = performance.now();
+        return;
+      }
       this.tick();
     };
     this.raf = requestAnimationFrame(loop);
@@ -293,6 +299,11 @@ export class JetScene {
 
   get currentStage() {
     return this.stage;
+  }
+
+  /** Stop rendering while the hero is scrolled out of view. */
+  setPaused(p: boolean) {
+    this.paused = p;
   }
 
   setReducedMotion(r: boolean) {

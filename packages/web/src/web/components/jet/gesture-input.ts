@@ -1,25 +1,40 @@
-// Turns wheel / trackpad / touch / keyboard input into discrete "step" intents.
+// Turns wheel / trackpad / touch / keyboard input into discrete "step" intents
+// for the hero, and hands scrolling back to the page after the final stage.
 //
 // Rules:
+//  - input is only captured while the hero is "engaged" (page scrolled to top)
 //  - one deliberate gesture => exactly one step
 //  - while the host reports busy (camera moving), every event is discarded
 //  - after a step fires, input stays disarmed until the wheel has been quiet
 //    for QUIET_MS — this swallows trackpad inertia / Magic Mouse momentum that
 //    continues long after the fingers lift, so a fresh gesture is required
+//  - at the last stage a fresh forward gesture is *released*: the wheel event is
+//    left to scroll the page natively; touch/keys ask the host to scroll for them
+//  - momentum that carries the page back up to the top never steps the camera:
+//    pass-through wheel events disarm input until the wheel goes quiet
 
-export type StepHandler = (dir: 1 | -1, source: "wheel" | "touch" | "key") => void;
+export type InputSource = "wheel" | "touch" | "key";
+export type StepHandler = (dir: 1 | -1, source: InputSource) => void;
+
+export type GestureHost = {
+  isBusy: () => boolean;
+  /** hero owns input (page at the very top) */
+  isEngaged: () => boolean;
+  /** a forward gesture now should leave the hero (last stage, settled) */
+  canRelease: () => boolean;
+  onStep: StepHandler;
+  onRelease: (source: InputSource) => void;
+};
 
 const QUIET_MS = 240;
+const RETURN_SETTLE_MS = 700;
 const WHEEL_THRESHOLD = 38; // px of intent within a gesture before it counts
 const TOUCH_THRESHOLD = 46;
 
-export function attachGestureInput(
-  target: HTMLElement,
-  isBusy: () => boolean,
-  onStep: StepHandler,
-): () => void {
+export function attachGestureInput(target: HTMLElement, host: GestureHost): () => void {
   let armed = true;
   let lastWheel = 0;
+  let lastPassThrough = -Infinity;
   let accum = 0;
   let quietTimer: number | undefined;
 
@@ -27,7 +42,7 @@ export function attachGestureInput(
     window.clearTimeout(quietTimer);
     quietTimer = window.setTimeout(function check() {
       // still moving? keep waiting — we only re-arm once settled AND quiet
-      if (isBusy()) {
+      if (host.isBusy()) {
         quietTimer = window.setTimeout(check, 60);
         return;
       }
@@ -40,27 +55,51 @@ export function attachGestureInput(
     }, QUIET_MS);
   };
 
-  const fire = (dir: 1 | -1, source: "wheel" | "touch" | "key") => {
+  const disarm = () => {
     armed = false;
     accum = 0;
-    onStep(dir, source);
     scheduleRearm();
   };
 
+  const fire = (dir: 1 | -1, source: InputSource) => {
+    disarm();
+    host.onStep(dir, source);
+  };
+
   const onWheel = (e: WheelEvent) => {
-    e.preventDefault();
     const now = performance.now();
     const gap = now - lastWheel;
     lastWheel = now;
-    if (!armed || isBusy()) {
+    if (e.ctrlKey) return; // pinch-zoom
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
+    const dy = (Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX) * unit;
+
+    if (!host.isEngaged()) {
+      // page is scrolling natively; make sure its momentum can't step the camera
+      lastPassThrough = now;
+      disarm();
+      return;
+    }
+    // just arrived back at the top from page scrolling: the same burst of wheel
+    // input must not carry on into the camera — wait for a clearly new gesture
+    if (now - lastPassThrough < RETURN_SETTLE_MS) {
+      lastPassThrough = now;
+      disarm();
+      return;
+    }
+    // fresh forward gesture at the final stage: let the page take it
+    if (armed && dy > 0 && host.canRelease()) {
+      disarm();
+      host.onRelease("wheel");
+      return;
+    }
+    e.preventDefault();
+    if (!armed || host.isBusy()) {
       // wheel activity while moving or disarmed postpones re-arming (momentum tail)
-      armed = false;
-      scheduleRearm();
+      disarm();
       return;
     }
     if (gap > 400) accum = 0;
-    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
-    const dy = (Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX) * unit;
     accum += dy;
     if (Math.abs(accum) >= WHEEL_THRESHOLD) fire(accum > 0 ? 1 : -1, "wheel");
   };
@@ -69,48 +108,58 @@ export function attachGestureInput(
   let touchStartY = 0;
   let touchStartX = 0;
   let touchUsed = false;
+  let touchEngaged = false;
   const onTouchStart = (e: TouchEvent) => {
     const t = e.touches[0];
     if (!t) return;
     touchStartY = t.clientY;
     touchStartX = t.clientX;
     touchUsed = false;
+    touchEngaged = host.isEngaged();
   };
   const onTouchMove = (e: TouchEvent) => {
+    if (!touchEngaged) return;
     const t = e.touches[0];
     if (!t) return;
     const dy = touchStartY - t.clientY;
     const dx = touchStartX - t.clientX;
-    if (Math.abs(dy) > 6) e.preventDefault();
-    if (touchUsed || isBusy()) return;
+    if (Math.abs(dy) > 6 && e.cancelable) e.preventDefault();
+    if (touchUsed || host.isBusy()) return;
     if (Math.abs(dy) >= TOUCH_THRESHOLD && Math.abs(dy) > Math.abs(dx) * 1.2) {
       touchUsed = true;
-      onStep(dy > 0 ? 1 : -1, "touch");
+      if (dy > 0 && host.canRelease()) host.onRelease("touch");
+      else host.onStep(dy > 0 ? 1 : -1, "touch");
     }
   };
 
   const onKey = (e: KeyboardEvent) => {
     if (e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!host.isEngaged()) return;
     const el = e.target as HTMLElement | null;
-    const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    const typing =
+      el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
     if (typing) return;
-    const next = ["ArrowDown", "PageDown", "ArrowRight"].includes(e.key) || (e.key === " " && !e.shiftKey);
-    const prev = ["ArrowUp", "PageUp", "ArrowLeft"].includes(e.key) || (e.key === " " && e.shiftKey);
+    // only take keys when focus is in the hero (or nowhere in particular)
+    if (el && el !== document.body && !target.contains(el) && !el.closest("[data-hero-keys]")) return;
+    const next = ["ArrowDown", "PageDown"].includes(e.key) || (e.key === " " && !e.shiftKey);
+    const prev = ["ArrowUp", "PageUp"].includes(e.key) || (e.key === " " && e.shiftKey);
     if (!next && !prev) return;
     // let Space/Enter activate focused buttons normally
     if (e.key === " " && el && el.tagName === "BUTTON") return;
     e.preventDefault();
-    if (isBusy()) return;
-    onStep(next ? 1 : -1, "key");
+    if (host.isBusy()) return;
+    if (next && host.canRelease()) host.onRelease("key");
+    else host.onStep(next ? 1 : -1, "key");
   };
 
-  target.addEventListener("wheel", onWheel, { passive: false });
+  // capture phase: decide before the page's smooth-scroller sees the event
+  window.addEventListener("wheel", onWheel, { passive: false, capture: true });
   target.addEventListener("touchstart", onTouchStart, { passive: true });
   target.addEventListener("touchmove", onTouchMove, { passive: false });
   window.addEventListener("keydown", onKey);
   return () => {
     window.clearTimeout(quietTimer);
-    target.removeEventListener("wheel", onWheel);
+    window.removeEventListener("wheel", onWheel, { capture: true });
     target.removeEventListener("touchstart", onTouchStart);
     target.removeEventListener("touchmove", onTouchMove);
     window.removeEventListener("keydown", onKey);

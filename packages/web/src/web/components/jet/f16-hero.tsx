@@ -2,18 +2,29 @@ import "./jet-hero.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { JetScene } from "./jet-scene";
 import { attachGestureInput } from "./gesture-input";
-import { SoundEngine } from "./sound-engine";
+import { atTop, smoothScrollTo } from "../experience/smooth-scroll";
+import { useExperience } from "../experience/experience-context";
 import { STAGE_COPY } from "./stage-copy";
 import { STAGE_COUNT } from "./camera-stages";
 
 type Phase = "loading" | "ready" | "error";
 
-export function F16Hero() {
+type HeroProps = {
+  onReady?: () => void;
+  /** id of the section the page releases into after the final stage */
+  nextId: string;
+};
+
+export function F16Hero({ onReady, nextId }: HeroProps) {
   const rootRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fadeRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<JetScene | null>(null);
-  const soundRef = useRef<SoundEngine | null>(null);
+  const { reduced, engine } = useExperience();
+  const engineRef = useRef(engine);
+  engineRef.current = engine;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [progress, setProgress] = useState(0);
@@ -21,11 +32,9 @@ export function F16Hero() {
   const [stage, setStage] = useState(0); // settled stage
   const [target, setTarget] = useState(0); // stage being travelled to
   const [moving, setMoving] = useState(false);
-  const [sound, setSound] = useState(false);
-  const [reduced, setReduced] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
+  const [engaged, setEngaged] = useState(true);
   const reducedRef = useRef(reduced);
+  const stageRef = useRef(0);
 
   // scene lifecycle
   useEffect(() => {
@@ -40,9 +49,10 @@ export function F16Hero() {
           onMoveStart: (from, to, duration) => {
             setMoving(true);
             setTarget(to);
-            soundRef.current?.whoosh(to > from ? 1 : -1, duration);
+            engineRef.current()?.whoosh(to > from ? 1 : -1, duration);
           },
           onSettle: (s) => {
+            stageRef.current = s;
             setStage(s);
             setTarget(s);
             setMoving(false);
@@ -59,11 +69,15 @@ export function F16Hero() {
     sceneRef.current = scene;
     scene
       .load()
-      .then(() => setPhase("ready"))
+      .then(() => {
+        setPhase("ready");
+        onReadyRef.current?.();
+      })
       .catch((e: unknown) => {
         console.error(e);
         setError(e instanceof Error ? e.message : "The aircraft failed to load.");
         setPhase("error");
+        onReadyRef.current?.();
       });
     if (import.meta.env.DEV) (window as unknown as { __jet: JetScene }).__jet = scene;
     return () => {
@@ -83,40 +97,53 @@ export function F16Hero() {
     return s.go(dir);
   }, []);
 
+  const release = useCallback(
+    (source: "wheel" | "touch" | "key") => {
+      // wheel releases scroll natively; touch and keys get a smooth hand-off
+      if (source === "wheel") return;
+      const next = document.getElementById(nextId);
+      if (next) smoothScrollTo(next, { immediate: reducedRef.current });
+    },
+    [nextId],
+  );
+
   // input
   useEffect(() => {
     const el = rootRef.current;
     if (!el || phase !== "ready") return;
-    return attachGestureInput(
-      el,
-      () => sceneRef.current?.busy ?? true,
-      (dir) => {
+    return attachGestureInput(el, {
+      isBusy: () => sceneRef.current?.busy ?? true,
+      isEngaged: atTop,
+      canRelease: () => stageRef.current === STAGE_COUNT && !(sceneRef.current?.busy ?? true),
+      onStep: (dir) => {
         step(dir);
       },
-    );
-  }, [phase, step]);
+      onRelease: release,
+    });
+  }, [phase, step, release]);
 
+  // engaged flag (drives touch-action) + pause rendering when off-screen
   useEffect(() => {
-    soundRef.current = new SoundEngine();
-    return () => soundRef.current?.dispose();
+    const onScroll = () => setEngaged(window.scrollY <= 1);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    const el = rootRef.current;
+    const io = new IntersectionObserver(([en]) => sceneRef.current?.setPaused(!en?.isIntersecting), {
+      threshold: 0,
+    });
+    if (el) io.observe(el);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      io.disconnect();
+    };
   }, []);
 
-  const toggleSound = async () => {
-    const s = soundRef.current;
-    if (!s) return;
-    if (s.isEnabled) {
-      s.disable();
-      setSound(false);
-    } else {
-      setSound(true);
-      try {
-        await s.enable();
-      } catch (e) {
-        console.error(e);
-        setSound(false);
-      }
-    }
-  };
+  // keep the page still until the hero is ready (error state releases it)
+  useEffect(() => {
+    const lock = phase === "loading";
+    document.documentElement.classList.toggle("is-locked", lock);
+    return () => document.documentElement.classList.remove("is-locked");
+  }, [phase]);
 
   const caption = !moving && stage > 0 ? STAGE_COPY[stage - 1] : undefined;
   const showHero = stage === 0 && !moving;
@@ -129,55 +156,13 @@ export function F16Hero() {
       aria-label="F-16 Fighting Falcon — interactive 3D hero"
       data-stage={stage}
       data-moving={moving ? "1" : "0"}
+      data-engaged={engaged ? "1" : "0"}
+      id="top"
     >
       <canvas ref={canvasRef} className="jet-canvas" aria-hidden="true" />
       <div className="jet-vignette" aria-hidden="true" />
       <div className="jet-grain" aria-hidden="true" />
       <div ref={fadeRef} className="jet-fade" aria-hidden="true" />
-
-      {/* navigation */}
-      <header className={`jet-nav ${ready ? "is-in" : ""}`}>
-        <a className="jet-wordmark" href="/" aria-label="Falcon home">
-          <span className="jet-wordmark-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <path d="M12 2 L14 10 L22 14 L14 14.5 L13 20 L16 22 L8 22 L11 20 L10 14.5 L2 14 L10 10 Z" fill="currentColor" />
-            </svg>
-          </span>
-          <span>FALCON</span>
-          <span className="jet-wordmark-sub">F-16</span>
-        </a>
-        <nav className="jet-links" aria-label="Primary">
-          <a href="#airframe">Airframe</a>
-          <a href="#avionics">Avionics</a>
-          <a href="#heritage">Heritage</a>
-        </nav>
-        <div className="jet-controls">
-          <button
-            type="button"
-            className="jet-chip"
-            aria-pressed={reduced}
-            onClick={() => setReduced((r) => !r)}
-            title="Reduce motion"
-          >
-            <span className={`jet-dot ${reduced ? "on" : ""}`} aria-hidden="true" />
-            <span className="jet-chip-label">Reduced motion</span>
-          </button>
-          <button
-            type="button"
-            className={`jet-chip jet-sound ${sound ? "is-on" : ""}`}
-            aria-pressed={sound}
-            onClick={toggleSound}
-          >
-            <span className="jet-eq" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-              <i />
-            </span>
-            <span>{sound ? "Sound on" : "Sound off"}</span>
-          </button>
-        </div>
-      </header>
 
       {/* stop 0 headline */}
       <div className={`jet-intro ${ready && showHero ? "is-in" : ""}`} aria-hidden={!showHero}>
@@ -215,7 +200,16 @@ export function F16Hero() {
           </p>
           <h2 className="jet-caption-title">{c.title}</h2>
           <p className="jet-caption-body">{c.body}</p>
-          {i === STAGE_COPY.length - 1 && <p className="jet-caption-foot">Scroll up to revisit</p>}
+          {i === STAGE_COPY.length - 1 && (
+            <button
+              type="button"
+              className="jet-caption-foot"
+              tabIndex={caption === c ? 0 : -1}
+              onClick={() => release("key")}
+            >
+              Continue to capabilities <span aria-hidden="true">↓</span>
+            </button>
+          )}
         </div>
       ))}
 

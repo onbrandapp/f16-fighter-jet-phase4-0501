@@ -1,6 +1,7 @@
 import type { RouterClient } from "@orpc/server";
 import { createApp } from "./__core/app";
 import { ping } from "./routes/ping";
+import { inquiries } from "./routes/inquiries";
 
 // API features are oRPC procedures, one file per feature in ./routes/,
 // composed into this router — typed end-to-end via the clients
@@ -10,6 +11,7 @@ import { ping } from "./routes/ping";
 // Patterns and examples: skills/app/references/api.md
 export const router = {
   ping,
+  inquiries,
 };
 
 export type AppRouter = typeof router;

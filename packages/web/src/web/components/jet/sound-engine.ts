@@ -5,6 +5,18 @@
 const AMBIENT_URL = "/audio/ambient.mp3";
 const ENGINE_URL = "/audio/engine.mp3";
 const WHOOSH_URL = "/audio/whoosh.mp3";
+const UI_URLS = {
+  hover: "/audio/ui-hover.mp3",
+  swish: "/audio/ui-swish.mp3",
+  open: "/audio/ui-open.mp3",
+} as const;
+export type UiCue = keyof typeof UI_URLS;
+// per-cue level and minimum spacing (ms) so cues never pile up
+const UI_CFG: Record<UiCue, { gain: number; gap: number }> = {
+  hover: { gain: 0.22, gap: 260 },
+  swish: { gain: 0.3, gap: 420 },
+  open: { gain: 0.34, gap: 600 },
+};
 
 const MASTER = 0.55;
 const AMBIENT_GAIN = 0.42;
@@ -16,6 +28,10 @@ export class SoundEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private buffers: Partial<Record<"ambient" | "engine" | "whoosh", AudioBuffer>> = {};
+  private uiBuffers: Partial<Record<UiCue, AudioBuffer>> = {};
+  private uiLast: Partial<Record<UiCue, number>> = {};
+  private uiPlaying: Partial<Record<UiCue, { src: AudioBufferSourceNode; g: GainNode }>> = {};
+  private listeners = new Set<(on: boolean) => void>();
   private loading: Promise<void> | null = null;
   private ambientTimer: number | undefined;
   private engineSrc: AudioBufferSourceNode | null = null;
@@ -48,12 +64,82 @@ export class SoundEngine {
       this.loading = Promise.all([get(AMBIENT_URL), get(ENGINE_URL), get(WHOOSH_URL)]).then(([a, e, w]) => {
         this.buffers = { ambient: a, engine: e, whoosh: w };
       });
+      // UI cues are optional — a failure here never blocks the soundtrack
+      for (const [k, url] of Object.entries(UI_URLS) as [UiCue, string][]) {
+        get(url)
+          .then((b) => (this.uiBuffers[k] = b))
+          .catch((e: unknown) => console.warn(e));
+      }
     }
     await this.loading;
   }
 
+  /** Subscribe to on/off changes (used by every sound toggle on the page). */
+  subscribe(fn: (on: boolean) => void) {
+    this.listeners.add(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
+
+  private emit() {
+    for (const fn of this.listeners) fn(this.enabled);
+  }
+
+  /** Toggle from a user gesture. Resolves to the new state. */
+  async toggle(): Promise<boolean> {
+    if (this.enabled) {
+      this.disable();
+      return false;
+    }
+    try {
+      await this.enable();
+    } catch (e) {
+      console.error(e);
+      this.enabled = false;
+      this.emit();
+    }
+    return this.enabled;
+  }
+
+  /** Short interface cue; throttled and never stacked on itself. */
+  ui(cue: UiCue, pan = 0) {
+    if (!this.enabled || !this.ctx || this.ctx.state !== "running") return;
+    const buf = this.uiBuffers[cue];
+    if (!buf) return;
+    const nowMs = performance.now();
+    const cfg = UI_CFG[cue];
+    if (nowMs - (this.uiLast[cue] ?? -1e9) < cfg.gap) return;
+    this.uiLast[cue] = nowMs;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const prev = this.uiPlaying[cue];
+    if (prev) {
+      prev.g.gain.cancelScheduledValues(now);
+      prev.g.gain.setTargetAtTime(0, now, 0.03);
+      try {
+        prev.src.stop(now + 0.15);
+      } catch {
+        /* already stopped */
+      }
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g = ctx.createGain();
+    g.gain.value = cfg.gain;
+    const p = ctx.createStereoPanner();
+    p.pan.value = Math.max(-0.6, Math.min(0.6, pan));
+    src.connect(g).connect(p).connect(this.master!);
+    src.start(now);
+    src.onended = () => {
+      if (this.uiPlaying[cue]?.src === src) delete this.uiPlaying[cue];
+    };
+    this.uiPlaying[cue] = { src, g };
+  }
+
   async enable() {
     this.enabled = true;
+    this.emit();
     await this.ensure();
     const ctx = this.ctx!;
     if (ctx.state === "suspended") await ctx.resume();
@@ -67,6 +153,7 @@ export class SoundEngine {
 
   disable() {
     this.enabled = false;
+    this.emit();
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
     const now = ctx.currentTime;
