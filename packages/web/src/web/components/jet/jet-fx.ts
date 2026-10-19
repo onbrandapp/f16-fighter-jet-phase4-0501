@@ -27,7 +27,7 @@ export const STORE_IDS = [
 ] as const;
 export type StoreId = (typeof STORE_IDS)[number];
 
-export const FX_IDS = ["vortex", "pulse", "radar", "shock", "cue", "deck", "cft", "spine"] as const;
+export const FX_IDS = ["vortex", "pulse", "radar", "shock", "cue", "deck", "cft", "spine", "turn"] as const;
 export type FxId = (typeof FX_IDS)[number];
 
 export type FxState = Record<StoreId | FxId, number>;

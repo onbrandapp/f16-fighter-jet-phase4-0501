@@ -72,7 +72,7 @@ export function HistorySection() {
           <div className="hist-shade" aria-hidden="true" />
           <div ref={headRef} className={`hist-copy ${headIn ? "is-in" : ""}`}>
             <p className="fx-eyebrow">
-              <span className="fx-num">03</span> Operational history
+              <span className="fx-num">04</span> Operational history
             </p>
             <h2 id="hist-title" className="fx-display">
               <span className="fx-mask">

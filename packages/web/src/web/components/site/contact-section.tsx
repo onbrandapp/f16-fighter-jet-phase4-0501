@@ -144,7 +144,7 @@ export function ContactSection() {
       <div className="contact-inner">
         <div className="contact-head">
           <p className="fx-eyebrow">
-            <span className="fx-num">05</span> Contact
+            <span className="fx-num">06</span> Contact
           </p>
           <h2 id="contact-title" className="fx-display">
             Your Next Mission <em>Begins Here.</em>

@@ -180,7 +180,7 @@ export function VariantsSection() {
     <section ref={ref} id="variants" className="var" aria-labelledby="var-title">
       <div className="var-head">
         <p className="fx-eyebrow">
-          <span className="fx-num">04</span> Variants
+          <span className="fx-num">05</span> Variants
         </p>
         <h2 id="var-title" className="fx-display">
           One airframe. <em>Five decades.</em>

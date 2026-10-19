@@ -8,6 +8,8 @@ import { ANCHORS, JetFx, type AnchorId } from "./jet-fx";
 import { FlightDirector, makePose, poseCamera, poseFromLook, type Pose } from "./flight-director";
 import { flight } from "./flight-store";
 import { ExhaustPlume } from "../site/exhaust-plume";
+import { radiusFt } from "../site/turn-model";
+import { TurnViz } from "./turn-viz";
 
 export const MODEL_URL = "/models/f16.glb";
 // The GLB uses KHR_draco_mesh_compression. The decoder (wasm + wrapper, copied from
@@ -99,6 +101,7 @@ export class JetScene {
   private pose: Pose = makePose();
   private plume: ExhaustPlume;
   private plumeOn = false;
+  private turnViz = new TurnViz();
   private camPos = new THREE.Vector3();
   private projTmp = new THREE.Vector3();
   private lastYaw = 0;
@@ -171,6 +174,7 @@ export class JetScene {
     this.compositeScene.add(this.composite);
     this.renderer.autoClear = false;
     this.scene.add(this.jetRoot);
+    this.scene.add(this.turnViz.group);
     this.jetRoot.rotation.order = "YXZ";
     this.plume = new ExhaustPlume(this.scene);
     this.plume.glow.position.set(0, -0.6, 6.75);
@@ -439,6 +443,8 @@ export class JetScene {
 
     // add-ons + exhaust
     this.fx.update(pose.fx, t, dt, r);
+    const tn = this.director.turnN;
+    this.turnViz.update(pose.fx.turn ?? 0, tn, radiusFt(flight.turn.v, tn), flight.turn.v, this.jetRoot.position, dt, r);
     const plumeOn = pose.plume > 0.6;
     if (plumeOn !== this.plumeOn) {
       this.plumeOn = plumeOn;
@@ -458,6 +464,7 @@ export class JetScene {
     this.lastYaw = pose.yaw;
     this.turn += (Math.min(yawRate, 3) - this.turn) * Math.min(1, dt * 3);
     flight.hud.g = Math.min(9.4, 1 / Math.max(0.105, Math.cos(pose.roll)) + this.turn * 1.6);
+    if (this.director.station === "turn") flight.hud.g = tn;
     flight.hud.heading = ((THREE.MathUtils.radToDeg(-pose.yaw) % 360) + 360) % 360;
 
     this.clouds.update(this.travel, this.camera, this.jetRoot.position);
@@ -596,6 +603,7 @@ export class JetScene {
     this.ro.disconnect();
     this.fx.dispose();
     this.plume.dispose();
+    this.turnViz.dispose();
     this.clouds.dispose();
     this.cloudRT.dispose();
     this.depthMat.dispose();

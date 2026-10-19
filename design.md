@@ -37,6 +37,12 @@ Ambient bed (drone + wind) + engine hum loop + whoosh on each move. Off by defau
 - Variants: orbitable on a deck ring (drag / arrow keys); CFTs, spine and loadouts are separate procedural meshes. GLB geometry and materials are never altered.
 - Contact and footer are opaque ink; clouds fade out below the hero.
 
+## Turn explainer (phase 4)
+- Section 03 `#turn`: transparent, sticky stage column (data-flight="turn") on the right; copy, readouts, chart, controls on the left. Mobile: head → stage (≤320px) → readouts → sliders/presets → chart.
+- Model in `site/turn-model.ts` — illustrative sea-level E-M: lift limit (V/Vs)², 9 g structural cap, corner 350 kt, sustained curve peaks ~7 g at 460 kt. Always labelled "not flight-manual data".
+- Chart colours: amber = instantaneous/limits/corner, green = sustained, amber band = energy bleed. Readouts in HUD mono; energy turns amber when bleeding.
+- 3D: jet banks to acos(1/n); world-space ring (compressed radius 6+20·(ft/4000)^0.8), dashed radius + centre cross, amber lift vector with green 1 g / horizontal components. Wingtip vortices above ~4.5 g.
+
 ## HUD language
 - Lines: green `--hud` #8ff0a8 (data), amber `--hud-amber` #e6b766 (propulsion / warnings), dimmed with `--hud-dim` / `--hud-faint`. 1px only, no fills beyond 6% tints.
 - Type: **JetBrains Mono** 9.5–11px, uppercase, 0.1–0.22em tracking.

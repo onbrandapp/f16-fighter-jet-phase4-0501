@@ -16,6 +16,8 @@ export const flight = {
   hist: { y: 0, x: 0, live: false, p: 0 },
   /** Variants: selected airframe + loadout, and orbit offsets (radians) from dragging */
   variant: { id: "ab", loadout: "a2a" as Loadout, yaw: 0, pitch: 0, dragging: false },
+  /** Turn explainer: airspeed (kt) and load factor (g) the reader has set */
+  turn: { v: 350, n: 5, live: false },
   /** HUD telemetry, written by the scene every frame */
   hud: { g: 1, heading: 0, station: "hero" as string },
 };

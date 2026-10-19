@@ -8,6 +8,7 @@ import { HistorySection } from "../components/site/history-section";
 import { PerformanceSection } from "../components/site/performance-section";
 import { SiteFooter } from "../components/site/site-footer";
 import { SiteNav } from "../components/site/site-nav";
+import { TurnSection } from "../components/site/turn-section";
 import { VariantsSection } from "../components/site/variants-section";
 import "../components/site/site.css";
 
@@ -25,6 +26,7 @@ function Index() {
       <F16Hero nextId="performance" onReady={() => setReady(true)} />
       <main className="site-main">
         <PerformanceSection />
+        <TurnSection />
         <HistorySection />
         <VariantsSection />
         <ContactSection />

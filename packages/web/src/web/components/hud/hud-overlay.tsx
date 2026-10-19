@@ -7,8 +7,9 @@ import { flight } from "../jet/flight-store";
 const STATION_LABEL: Record<string, string> = {
   hero: "",
   perf: "02 · Performance",
-  hist: "03 · History",
-  var: "04 · Variants",
+  turn: "03 · Turn",
+  hist: "04 · History",
+  var: "05 · Variants",
   off: "",
 };
 

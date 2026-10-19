@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { emptyFx, FX_IDS, STORE_IDS, type FxState } from "./jet-fx";
 import { flight, type Loadout } from "./flight-store";
 import { smootherstep } from "./camera-stages";
+import { bankDeg } from "../site/turn-model";
 
 /**
  * The flight director: one persistent aircraft, many stations. The hero's
@@ -234,6 +235,9 @@ export class FlightDirector {
   private capA = makePose();
   private capB = makePose();
   private histPose = makePose();
+  private turnPose = makePose();
+  /** eased load factor the turn station is flying (HUD + turn viz read it) */
+  turnN = 1;
   private varPose = makePose();
   private out = makePose();
   private tmp = makePose();
@@ -244,7 +248,7 @@ export class FlightDirector {
   /** 0 hero … 1 fully handed to the page stations (for HUD + render decisions) */
   cruise = 0;
   /** which station dominates: hero | perf | hist | var | off */
-  station: "hero" | "perf" | "hist" | "var" | "off" = "hero";
+  station: "hero" | "perf" | "turn" | "hist" | "var" | "off" = "hero";
   /** world units → px for the history pose (plume sizing) */
   histPpu = 20;
   histWeight = 0;
@@ -276,6 +280,7 @@ export class FlightDirector {
     const perfEl = document.getElementById("performance");
     const perfStage = boxOf(this.q("perf", now));
     const histTrack = boxOf(this.q("hist", now));
+    const turnStage = boxOf(this.q("turn", now));
     const varStage = boxOf(this.q("var", now));
     if (now - this.lastQuery > 2) this.lastQuery = now;
     const vh = window.innerHeight || H;
@@ -306,12 +311,30 @@ export class FlightDirector {
     this.station = u0 < 0.5 ? "hero" : "perf";
     this.histWeight = 0;
 
+    // ── turn explainer: hand off from the perf reel as it releases
+    let prev = this.capPose;
+    let prevBottom = pr.bottom;
+    const turnEl = turnStage ? document.getElementById("turn") : null;
+    if (turnStage && turnEl) {
+      this.turnStation(this.turnPose, turnStage, W, H, t, dt, reduced);
+      const d = turnStage.cy - vh / 2 - (pr.bottom - vh);
+      const ut = smootherstep(clamp((vh - pr.bottom) / Math.max(1, d)));
+      if (ut > 0) {
+        lerpPose(this.tmp, this.capPose, this.turnPose, ut);
+        copyPose(this.out, this.tmp);
+        out = this.out;
+        if (ut >= 0.5) this.station = "turn";
+      }
+      prev = this.turnPose;
+      prevBottom = turnEl.getBoundingClientRect().bottom;
+    }
+
     if (histTrack) {
       this.historyStation(this.histPose, histTrack, W, H, vh, t, dt, reduced);
-      const d1 = histTrack.top - 0.15 * vh - (pr.bottom - vh);
-      const u1 = smootherstep(clamp((vh - pr.bottom) / Math.max(1, d1)));
+      const d1 = histTrack.top - 0.15 * vh - (prevBottom - vh);
+      const u1 = smootherstep(clamp((vh - prevBottom) / Math.max(1, d1)));
       if (u1 > 0) {
-        out = lerpPose(this.tmp, this.capPose, this.histPose, u1);
+        out = lerpPose(this.tmp, prev, this.histPose, u1);
         copyPose(this.out, out);
         out = this.out;
         this.histWeight = u1;
@@ -399,6 +422,35 @@ export class FlightDirector {
     flight.hist.x = b.cx;
     flight.hist.p = pp;
     flight.hist.live = true;
+  }
+
+  private turnStation(p: Pose, b: Box, W: number, H: number, t: number, dt: number, reduced: boolean) {
+    const goal = flight.turn.n;
+    this.turnN = reduced || dt === 0 ? goal : this.turnN + (goal - this.turnN) * (1 - Math.exp(-dt * 6));
+    const n = this.turnN;
+    const bank = (bankDeg(n) * Math.PI) / 180;
+    const drift = reduced ? 0 : 1;
+    const mobile = W < 760;
+    // chase view from behind and outside the turn, looking across the jet
+    // toward the centre of the circle
+    p.target.set(mobile ? 0.9 : 1.7, 0.4, -3.0);
+    p.yaw = -0.34 + Math.sin(t * 0.13) * 0.04 * drift;
+    p.pitch = 0.38;
+    p.fov = 30;
+    // right-wing-down bank; nose pulled up a touch with g (angle of attack)
+    p.roll = -bank + Math.sin(t * 0.9) * 0.012 * drift;
+    p.jpitch = 0.02 + 0.014 * (n - 1);
+    p.jyaw = 0;
+    p.jz = 0;
+    for (const k of FX_KEYS) p.fx[k] = 0;
+    p.fx.turn = 1;
+    p.fx.tip120 = 1;
+    p.fx.st2_9 = 1;
+    // condensation off the tips once the pull gets hard
+    p.fx.vortex = clamp((n - 4.5) / 3.5);
+    p.clouds = 0;
+    p.plume = 0;
+    this.place(p, b, this.fitPx(b, W, H, mobile) * (mobile ? 0.66 : 0.6), W, H);
   }
 
   private variantStation(p: Pose, b: Box, W: number, H: number, t: number, dt: number, reduced: boolean) {
