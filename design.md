@@ -29,3 +29,18 @@ Night flight inside weather. Distant environment almost black; jet and nearby cl
 
 ## Audio
 Ambient bed (drone + wind) + engine hum loop + whoosh on each move. Off by default; explicit toggle.
+
+## Persistent jet (phase 3)
+- One fixed WebGL scene (`.sky-layer`, z 0) sits behind the whole page; sections are transparent so the same GLB carries every chapter. `flight-director.ts` blends per-section poses from `flight-store.ts` (hero stage, perf index, history year, variant yaw/pitch/loadout).
+- Performance: each capability is a pose plus a procedural effect (`jet-fx.ts`): wingtip vortices, store stations, EW rings, radar fan, shock cone.
+- History: top-down plan view, nose down-screen, plume on; the rail tracks the active year.
+- Variants: orbitable on a deck ring (drag / arrow keys); CFTs, spine and loadouts are separate procedural meshes. GLB geometry and materials are never altered.
+- Contact and footer are opaque ink; clouds fade out below the hero.
+
+## HUD language
+- Lines: green `--hud` #8ff0a8 (data), amber `--hud-amber` #e6b766 (propulsion / warnings), dimmed with `--hud-dim` / `--hud-faint`. 1px only, no fills beyond 6% tints.
+- Type: **JetBrains Mono** 9.5–11px, uppercase, 0.1–0.22em tracking.
+- Tapes: ALT = page depth, M = scroll speed, G = section turn rate. Fixed, pointer-events none.
+- Callouts: diamond pip on a projected 3D anchor → angled leader → label (code + description). Same-side labels de-stack (36px gap); labels flip sides at viewport edges. Max 4 at once.
+- Reticle cursor: locks brackets onto clickables; hidden on `pointer: coarse` and reduced motion; native cursor in inputs and dialogs.
+- Boot loader: dial + BIT checklist driven by real asset load progress.

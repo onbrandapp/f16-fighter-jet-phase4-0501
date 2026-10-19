@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ExperienceProvider, useExperience } from "../components/experience/experience-context";
 import { SmoothScroll } from "../components/experience/smooth-scroll";
+import { HudOverlay, Reticle } from "../components/hud/hud-overlay";
 import { F16Hero } from "../components/jet/f16-hero";
 import { ContactSection } from "../components/site/contact-section";
 import { HistorySection } from "../components/site/history-section";
@@ -29,6 +30,8 @@ function Index() {
         <ContactSection />
       </main>
       <SiteFooter />
+      <HudOverlay />
+      <Reticle />
     </ExperienceProvider>
   );
 }

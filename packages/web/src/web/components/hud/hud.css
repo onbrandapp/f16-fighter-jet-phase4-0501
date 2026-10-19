@@ -1,0 +1,449 @@
+/* ───────────────────────── HUD design language ─────────────────────────
+   Thin green/amber strokes and mono readouts, borrowed from a head-up display.
+   Used with restraint: edge tapes, callouts on the airframe, the reticle. */
+:root {
+  --hud: #8ff0a8;
+  --hud-amber: #e6b766;
+  --hud-dim: rgba(143, 240, 168, 0.42);
+  --hud-faint: rgba(143, 240, 168, 0.16);
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+/* ── edge tapes ── */
+.hud {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--hud);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 0.7s var(--ease);
+  text-shadow: 0 0 10px rgba(143, 240, 168, 0.35);
+}
+.hud.is-on {
+  opacity: 1;
+}
+.hud b {
+  font-weight: 500;
+}
+.hud i {
+  font-style: normal;
+  color: var(--hud-dim);
+  margin-right: 6px;
+}
+
+.hud-alt,
+.hud-air {
+  position: absolute;
+  bottom: 9vh;
+  height: 30vh;
+  width: 74px;
+}
+.hud-alt {
+  right: clamp(12px, 1.6vw, 26px);
+}
+.hud-air {
+  left: clamp(12px, 1.6vw, 26px);
+}
+.hud-tape {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  border-left: 1px solid var(--hud-faint);
+  /* scrolling ladder: major + minor ticks */
+  background:
+    repeating-linear-gradient(to bottom, var(--hud-dim) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(to bottom, var(--hud-faint) 0 1px, transparent 1px 8px);
+  background-size: 12px 40px, 6px 8px;
+  background-repeat: repeat-y;
+  -webkit-mask: linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);
+  mask: linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);
+}
+.hud-alt .hud-tape {
+  right: 0;
+  border-left: 0;
+  border-right: 1px solid var(--hud-faint);
+  background-position: right calc(var(--alt, 0) * 4000px), right calc(var(--alt, 0) * 4000px);
+}
+.hud-air .hud-tape {
+  left: 0;
+  background-position: 0 calc(var(--alt, 0) * -2400px), 0 calc(var(--alt, 0) * -2400px);
+}
+.hud-box {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 6px 8px;
+  border: 1px solid var(--hud-dim);
+  background: rgba(3, 8, 5, 0.38);
+  white-space: nowrap;
+}
+.hud-alt .hud-box {
+  right: 18px;
+}
+.hud-air .hud-box {
+  left: 18px;
+}
+.hud-g {
+  position: absolute;
+  left: 18px;
+  top: calc(50% + 26px);
+  white-space: nowrap;
+  color: var(--hud-amber);
+}
+.hud-g i {
+  color: rgba(230, 183, 102, 0.55);
+}
+
+.hud-hdg {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(14px, 2.4vh, 26px);
+  width: min(280px, 40vw);
+  height: 22px;
+  transform: translateX(-50%);
+}
+.hud-hdg-tape {
+  position: absolute;
+  inset: 0 0 10px;
+  border-bottom: 1px solid var(--hud-faint);
+  background:
+    repeating-linear-gradient(to right, var(--hud-dim) 0 1px, transparent 1px 36px),
+    repeating-linear-gradient(to right, var(--hud-faint) 0 1px, transparent 1px 9px);
+  background-size: 36px 100%, 9px 50%;
+  background-repeat: repeat-x;
+  background-position: calc(var(--hdg, 0) * -1296px) 0, calc(var(--hdg, 0) * -1296px) 100%;
+  -webkit-mask: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent);
+  mask: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent);
+}
+.hud-hdg-box {
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  padding: 3px 6px;
+  border: 1px solid var(--hud-dim);
+  background: rgba(3, 8, 5, 0.5);
+}
+
+.hud-stn {
+  position: absolute;
+  margin: 0;
+  right: clamp(12px, 1.6vw, 26px);
+  bottom: clamp(14px, 2.4vh, 26px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hud-dim);
+  text-transform: uppercase;
+}
+.hud-stn-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--hud);
+  box-shadow: 0 0 8px var(--hud);
+  animation: hud-blink 2.4s steps(2) infinite;
+}
+@keyframes hud-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ── callouts pinned to the airframe ── */
+.hud-callouts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.hud-callout {
+  --c: var(--hud);
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+  font: 500 10px/1.25 var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--c);
+  text-transform: uppercase;
+  transition: opacity 0.3s;
+}
+.hud-callout.tone-amber {
+  --c: var(--hud-amber);
+}
+.hud-callout-pip {
+  position: absolute;
+  left: -5px;
+  top: -5px;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--c);
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.45s var(--ease) calc(var(--i) * 0.12s);
+}
+.hud-callout-pip::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--c);
+}
+.hud-callout-lead {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  width: var(--lw, 56px);
+  height: 1px;
+  background: var(--c);
+  opacity: 0.7;
+  transform-origin: left center;
+  transform: rotate(var(--la, 0deg)) scaleX(0);
+  transition: transform 0.5s var(--ease) calc(0.12s + var(--i) * 0.12s);
+}
+.hud-callout-label {
+  position: absolute;
+  top: calc(-7px + var(--dy, 0px));
+  left: calc(14px + var(--lx, 56px));
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity 0.4s var(--ease) calc(0.3s + var(--i) * 0.12s),
+    transform 0.4s var(--ease) calc(0.3s + var(--i) * 0.12s);
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
+}
+.hud-callout-label b {
+  font-weight: 500;
+}
+.hud-callout-label span {
+  color: var(--text);
+  opacity: 0.78;
+  letter-spacing: 0.08em;
+}
+.hud-callout[data-side="l"] .hud-callout-lead {
+  left: auto;
+  right: 8px;
+  transform-origin: right center;
+  transform: rotate(calc(var(--la, 0deg) * -1)) scaleX(0);
+}
+.hud-callout[data-side="l"] .hud-callout-label {
+  left: auto;
+  right: calc(14px + var(--lx, 56px));
+  align-items: flex-end;
+  transform: translateX(6px);
+}
+.hud-callouts.is-in .hud-callout-pip {
+  transform: rotate(45deg) scale(1);
+}
+.hud-callouts.is-in .hud-callout-lead {
+  transform: rotate(var(--la, 0deg)) scaleX(1);
+}
+.hud-callouts.is-in .hud-callout[data-side="l"] .hud-callout-lead {
+  transform: rotate(calc(var(--la, 0deg) * -1)) scaleX(1);
+}
+.hud-callouts.is-in .hud-callout-label {
+  opacity: 1;
+  transform: none;
+}
+.hud-callouts:not(.is-in) .hud-callout * {
+  transition-delay: 0s;
+}
+
+/* ── reticle cursor ── */
+.reticle,
+.reticle-box {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  display: none;
+}
+html.has-reticle .reticle,
+html.has-reticle .reticle-box {
+  display: block;
+}
+html.has-reticle,
+html.has-reticle * {
+  cursor: none !important;
+}
+html.has-reticle :is(input, textarea, dialog, dialog *),
+html.has-reticle.reticle-free,
+html.has-reticle.reticle-free * {
+  cursor: auto !important;
+}
+html.has-reticle dialog :is(a, button, label, [role="button"]) {
+  cursor: pointer !important;
+}
+html.has-reticle :is(input[type="text"], input[type="email"], textarea) {
+  cursor: text !important;
+}
+.reticle {
+  width: 0;
+  height: 0;
+  transition: opacity 0.2s;
+  mix-blend-mode: normal;
+}
+.reticle-ring {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--hud);
+  box-shadow: 0 0 8px rgba(143, 240, 168, 0.25);
+  transition:
+    transform 0.25s var(--ease),
+    opacity 0.25s;
+}
+.reticle-ring::before,
+.reticle-ring::after {
+  content: "";
+  position: absolute;
+  background: var(--hud);
+}
+.reticle-ring::before {
+  left: 50%;
+  top: -5px;
+  bottom: -5px;
+  width: 1px;
+  transform: translateX(-50%);
+  -webkit-mask: linear-gradient(to bottom, #000 0 7px, transparent 7px calc(100% - 7px), #000 calc(100% - 7px));
+  mask: linear-gradient(to bottom, #000 0 7px, transparent 7px calc(100% - 7px), #000 calc(100% - 7px));
+}
+.reticle-ring::after {
+  top: 50%;
+  left: -5px;
+  right: -5px;
+  height: 1px;
+  transform: translateY(-50%);
+  -webkit-mask: linear-gradient(to right, #000 0 7px, transparent 7px calc(100% - 7px), #000 calc(100% - 7px));
+  mask: linear-gradient(to right, #000 0 7px, transparent 7px calc(100% - 7px), #000 calc(100% - 7px));
+}
+.reticle-dot {
+  position: absolute;
+  left: -1.5px;
+  top: -1.5px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--hud);
+}
+.reticle.is-locked .reticle-ring {
+  transform: scale(0.4);
+  opacity: 0;
+}
+.reticle.is-locked .reticle-dot {
+  background: var(--hud-amber);
+}
+.reticle.is-down .reticle-ring {
+  transform: scale(0.75);
+}
+
+.reticle-box {
+  width: 30px;
+  height: 30px;
+}
+.reticle-box i {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 0 solid var(--hud-amber);
+}
+.reticle-box i:nth-child(1) {
+  left: 0;
+  top: 0;
+  border-width: 1px 0 0 1px;
+}
+.reticle-box i:nth-child(2) {
+  right: 0;
+  top: 0;
+  border-width: 1px 1px 0 0;
+}
+.reticle-box i:nth-child(3) {
+  right: 0;
+  bottom: 0;
+  border-width: 0 1px 1px 0;
+}
+.reticle-box i:nth-child(4) {
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 1px 1px;
+}
+.reticle-tag {
+  position: absolute;
+  left: 0;
+  top: -15px;
+  font: 500 8.5px/1 var(--mono);
+  letter-spacing: 0.2em;
+  color: var(--hud-amber);
+  opacity: 0;
+  transition: opacity 0.2s 0.08s;
+}
+.reticle-box.is-locked .reticle-tag {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .reticle,
+  .reticle-box {
+    display: none !important;
+  }
+}
+html[data-reduced-motion="1"] .reticle,
+html[data-reduced-motion="1"] .reticle-box {
+  display: none !important;
+}
+html[data-reduced-motion="1"] .hud-stn-dot {
+  animation: none;
+}
+html[data-reduced-motion="1"] .hud-callout * {
+  transition-duration: 0.01s !important;
+  transition-delay: 0s !important;
+}
+
+@media (max-width: 760px) {
+  .hud-alt,
+  .hud-air {
+    height: 22vh;
+    width: 60px;
+  }
+  .hud-alt {
+    right: 6px;
+  }
+  .hud-air {
+    left: 6px;
+  }
+  .hud-tape {
+    width: 8px;
+  }
+  .hud-box {
+    padding: 4px 5px;
+    font-size: 9px;
+  }
+  .hud-alt .hud-box,
+  .hud-air .hud-box,
+  .hud-g {
+    display: none;
+  }
+  .hud-hdg,
+  .hud-stn {
+    display: none;
+  }
+  .hud-callout-label {
+    font-size: 8.5px;
+  }
+  .hud-callout-label span {
+    display: none;
+  }
+}

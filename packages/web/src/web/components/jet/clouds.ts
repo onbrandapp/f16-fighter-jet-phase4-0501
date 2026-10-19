@@ -60,6 +60,7 @@ const fragment = /* glsl */ `
   uniform float uFogDensity;
   uniform float uAmbient;
   uniform float uGlowStrength;
+  uniform float uOpacity;
   varying vec2 vUv;
   varying float vAlpha;
   varying float vGlow;
@@ -78,7 +79,7 @@ const fragment = /* glsl */ `
     col += uLit * vGlow * 0.08 * (1.0 - t.r);
     float fog = 1.0 - exp(-pow(vDepth * uFogDensity, 1.45));
     col = mix(col, uFog, clamp(fog, 0.0, 1.0));
-    float a = alpha * (1.0 - fog * 0.55);
+    float a = alpha * (1.0 - fog * 0.55) * uOpacity;
     gl_FragColor = vec4(col * a, a); // premultiplied
   }
 `;
@@ -181,11 +182,20 @@ export class CloudField {
         uGlowStrength: { value: 1.45 },
         uLightPos: { value: new THREE.Vector3(-3, 4, -4) },
         uGlowRadius: { value: 46 },
+        uOpacity: { value: 1 },
       },
     });
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 2;
+  }
+
+  /** global fade, 0..1 (the persistent scene thins the weather below the hero) */
+  set opacity(v: number) {
+    this.material.uniforms.uOpacity!.value = v;
+  }
+  get opacity() {
+    return this.material.uniforms.uOpacity!.value as number;
   }
 
   private tmp = new THREE.Vector3();

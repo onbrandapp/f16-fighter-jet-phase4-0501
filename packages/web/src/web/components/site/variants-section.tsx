@@ -1,75 +1,110 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useExperience } from "../experience/experience-context";
+import { HudCallouts, type Callout } from "../hud/hud-callouts";
+import { flight, type Loadout } from "../jet/flight-store";
 import { requestContact, VARIANTS, type Variant } from "./content";
-import { clamp, Dialog, LoopVideo, tiltHandlers, useFrameWhileVisible, type DialogHandle } from "./shared";
+import { clamp, Dialog, LoopVideo, useFrameWhileVisible, type DialogHandle } from "./shared";
 
 const N = VARIANTS.length;
 
+const LOADOUT_OPTS: { id: Loadout; label: string; code: string }[] = [
+  { id: "clean", label: "Clean", code: "CLN" },
+  { id: "a2a", label: "Air-to-air", code: "A/A" },
+  { id: "strike", label: "Strike", code: "A/G" },
+];
+
+/** block-specific hardware, pinned to the airframe */
+const PART_CALLOUTS: Record<string, Callout[]> = {
+  ab: [
+    { anchor: "radome", k: "APG-66", v: "Pulse-Doppler" },
+    { anchor: "canopy", k: "CANOPY", v: "One-piece bubble" },
+  ],
+  cd: [
+    { anchor: "radome", k: "APG-68", v: "Multi-mode radar" },
+    { anchor: "intake", k: "MCID", v: "Big-mouth inlet" },
+  ],
+  ef: [
+    { anchor: "radome", k: "APG-80", v: "First F-16 AESA" },
+    { anchor: "cftR", k: "CFT", v: "Conformal tanks", tone: "amber" },
+    { anchor: "spine", k: "SPINE", v: "Avionics bay", tone: "amber" },
+  ],
+  v: [
+    { anchor: "radome", k: "APG-83", v: "SABR AESA" },
+    { anchor: "cftR", k: "CFT", v: "Conformal tanks", tone: "amber" },
+  ],
+};
+
+const LOAD_CALLOUTS: Record<Loadout, Callout[]> = {
+  clean: [],
+  a2a: [
+    { anchor: "tipR", k: "STA 9", v: "AIM-120" },
+    { anchor: "st3L", k: "STA 3", v: "AIM-120" },
+  ],
+  strike: [
+    { anchor: "st3L", k: "STA 3", v: "GBU-31 JDAM", tone: "amber" },
+    { anchor: "pod", k: "STA 5R", v: "Targeting pod" },
+  ],
+};
+
 /**
- * Floating cards on a shallow 3D arc. A single continuous value (`cur`) eases
- * toward the selected index every frame, and each card's translate / rotate /
- * scale / depth is derived from its signed distance to it — so a change moves
- * the whole arrangement along the arc in one flowing motion. Dragging feeds the
- * same value directly, so swipes track the finger.
+ * The persistent jet comes to rest here as an orbitable model. Drag orbits the
+ * camera (the scene's director reads `flight.variant`), the tabs swap the block
+ * (conformal tanks, dorsal spine) and the chips swap the loadout live. The
+ * original stills and footage live on in the specification dialog.
  */
 export function VariantsSection() {
   const { reduced, cue } = useExperience();
   const [index, setIndex] = useState(0);
-  const target = useRef(0);
-  const cur = useRef(0);
-  const drag = useRef<{ id: number; x0: number; y0: number; dx: number; locked: boolean | null } | null>(null);
-  const moved = useRef(false);
-  const cardsRef = useRef<(HTMLDivElement | null)[]>([]);
+  const [loadout, setLoadout] = useState<Loadout>(flight.variant.loadout);
+  const [inView, setInView] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const stageRef = useRef<HTMLElement>(null);
-  const [visible, setVisible] = useState(false);
+  const drag = useRef<{
+    id: number;
+    x0: number;
+    y0: number;
+    yaw0: number;
+    pitch0: number;
+    mouse: boolean;
+    locked: boolean | null;
+  } | null>(null);
   const [spec, setSpec] = useState<Variant | null>(null);
   const dialog = useRef<DialogHandle>(null);
 
   const go = useCallback(
     (i: number) => {
       const n = clamp(i, 0, N - 1);
-      if (n === target.current) return;
-      target.current = n;
+      if (n === index) return;
       setIndex(n);
+      flight.variant.id = VARIANTS[n]!.id;
       cue("swish");
     },
-    [cue],
+    [cue, index],
   );
 
+  const pickLoadout = (l: Loadout) => {
+    if (l === loadout) return;
+    setLoadout(l);
+    flight.variant.loadout = l;
+    cue("swish");
+  };
+
   const ref = useFrameWhileVisible<HTMLElement>((rect, dt) => {
-    const vh = window.innerHeight;
-    const on = rect.top < vh && rect.bottom > 0;
-    if (on !== visible) setVisible(on);
     const stage = stageRef.current;
     if (!stage) return;
-    const w = stage.clientWidth;
-    const mobile = w < 640;
-    const dragOff = drag.current?.locked ? -drag.current.dx / ((mobile ? 0.7 : 0.34) * w) : 0;
-    const goal = clamp(target.current + dragOff, -0.35, N - 0.65);
-    if (reduced || dt === 0) cur.current = goal;
-    else cur.current += (goal - cur.current) * (1 - Math.exp(-dt * 7));
-    if (Math.abs(goal - cur.current) < 0.0004) cur.current = goal;
-
-    const c = cur.current;
-    const spread = mobile ? w * 0.62 : Math.min(w * 0.27, 400);
-    cardsRef.current.forEach((el, i) => {
-      if (!el) return;
-      const d = i - c;
-      const ad = Math.abs(d);
-      const x = Math.sign(d) * (1 - Math.exp(-ad * 1.05)) * spread * 1.55;
-      const y = Math.min(ad, 2.5) ** 1.5 * (mobile ? 30 : 72);
-      const z = -Math.min(ad, 3) * (mobile ? 140 : 240);
-      const ry = clamp(-d, -1.6, 1.6) * 24;
-      const rz = clamp(d, -2, 2) * 3.2;
-      const s = 1 - Math.min(ad, 2.5) * 0.11;
-      el.style.transform = `translate(-50%, -50%) translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, ${z.toFixed(1)}px) rotateY(${ry.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg) scale(${s.toFixed(4)})`;
-      el.style.setProperty("--dim", Math.min(1, ad * 0.75).toFixed(3));
-      el.style.opacity = String(clamp(2.6 - ad).toFixed(3));
-      el.style.zIndex = String(20 - Math.round(ad * 4));
-    });
+    const r = stage.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const cy = r.top + r.height / 2;
+    const on = cy > vh * 0.18 && cy < vh * 0.82 && rect.bottom > 0;
+    if (on !== inView) setInView(on);
+    // let a released drag drift its pitch back toward the resting view
+    if (!drag.current && dt > 0) {
+      flight.variant.pitch += (0 - flight.variant.pitch) * (1 - Math.exp(-dt * (reduced ? 50 : 1.2)));
+    }
   });
 
   const v = VARIANTS[index]!;
+  const callouts = useMemo(() => [...(PART_CALLOUTS[v.id] ?? []), ...LOAD_CALLOUTS[loadout]].slice(0, 4), [v.id, loadout]);
 
   const openSpecs = () => {
     setSpec(v);
@@ -80,10 +115,13 @@ export function VariantsSection() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      go(target.current - 1);
+      go(index - 1);
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      go(target.current + 1);
+      go(index + 1);
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      flight.variant.yaw += e.key === "ArrowUp" ? 0.35 : -0.35;
     } else if (e.key === "Home") {
       e.preventDefault();
       go(0);
@@ -93,11 +131,24 @@ export function VariantsSection() {
     }
   };
 
-  // swipe / drag: horizontal intent locks the gesture, vertical lets the page scroll
+  // orbit: a mouse grabs immediately; touch locks to horizontal intent so vertical swipes still scroll
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    drag.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, locked: null };
-    moved.current = false;
+    const mouse = e.pointerType === "mouse";
+    drag.current = {
+      id: e.pointerId,
+      x0: e.clientX,
+      y0: e.clientY,
+      yaw0: flight.variant.yaw,
+      pitch0: flight.variant.pitch,
+      mouse,
+      locked: mouse ? true : null,
+    };
+    if (mouse) {
+      stageRef.current?.setPointerCapture(e.pointerId);
+      flight.variant.dragging = true;
+      setDragging(true);
+    }
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const g = drag.current;
@@ -106,24 +157,23 @@ export function VariantsSection() {
     const dy = e.clientY - g.y0;
     if (g.locked === null && Math.hypot(dx, dy) > 8) {
       g.locked = Math.abs(dx) > Math.abs(dy) * 1.2;
-      if (g.locked) stageRef.current?.setPointerCapture(e.pointerId);
-      else drag.current = null;
+      if (g.locked) {
+        stageRef.current?.setPointerCapture(e.pointerId);
+        flight.variant.dragging = true;
+        setDragging(true);
+      } else drag.current = null;
     }
-    if (g.locked) {
-      g.dx = dx;
-      moved.current = true;
-    }
+    if (!g.locked) return;
+    const w = stageRef.current?.clientWidth ?? 800;
+    flight.variant.yaw = g.yaw0 - (dx / w) * Math.PI * 1.6;
+    if (g.mouse) flight.variant.pitch = clamp(g.pitch0 + dy * 0.004, -0.5, 0.85);
   };
   const endDrag = (e: React.PointerEvent) => {
     const g = drag.current;
     if (!g || g.id !== e.pointerId) return;
     drag.current = null;
-    if (!g.locked) return;
-    const w = stageRef.current?.clientWidth ?? 800;
-    const th = Math.min(90, w * 0.12);
-    // settle where the drag left the arrangement, nudged by direction
-    if (g.dx < -th) go(target.current + Math.max(1, Math.round(-g.dx / (w * 0.45))));
-    else if (g.dx > th) go(target.current - Math.max(1, Math.round(g.dx / (w * 0.45))));
+    flight.variant.dragging = false;
+    setDragging(false);
   };
 
   return (
@@ -137,13 +187,14 @@ export function VariantsSection() {
         </h2>
       </div>
 
-      {/* carousel container: focusable so Arrow / Home / End work once a visitor is inside it */}
+      {/* 3D viewer: focusable so Arrow / Home / End work once a visitor is inside it */}
       {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <section
         ref={stageRef}
-        className="var-stage"
-        aria-roledescription="carousel"
-        aria-label="F-16 variants — use the left and right arrow keys to browse"
+        className={`var-stage ${dragging ? "is-dragging" : ""}`}
+        data-flight="var"
+        aria-roledescription="3D viewer"
+        aria-label={`${v.name} — drag to orbit; left and right arrow keys change variant, up and down rotate`}
         // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
         onKeyDown={onKeyDown}
@@ -152,52 +203,52 @@ export function VariantsSection() {
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
-        {VARIANTS.map((item, i) => {
-          const isActive = i === index;
-          return (
-            <div
-              key={item.id}
-              ref={(el) => {
-                cardsRef.current[i] = el;
-              }}
-              className={`var-card ${isActive ? "is-active" : ""}`}
-              aria-hidden={!isActive}
-            >
-              <button
-                type="button"
-                className="var-card-btn"
-                tabIndex={isActive ? 0 : -1}
-                aria-label={`${i + 1} of ${N}: ${item.name}${isActive ? " — explore specifications" : ""}`}
-                onClick={() => {
-                  if (moved.current) return;
-                  if (isActive) openSpecs();
-                  else go(i);
-                }}
-                onPointerEnter={(e) => {
-                  if (e.pointerType === "mouse") cue("hover", (e.clientX / window.innerWidth) * 2 - 1);
-                }}
-              >
-                <span className="fx-tilt" {...tiltHandlers(!reduced && isActive)}>
-                  <LoopVideo
-                    src={item.video}
-                    poster={item.poster}
-                    alt=""
-                    play={visible && Math.abs(i - index) <= 1}
-                    reduced={reduced}
-                    className="var-media"
-                  />
-                  <span className="var-card-shade" aria-hidden="true" />
-                  <span className="fx-edge" aria-hidden="true" />
-                  <span className="var-card-meta" aria-hidden="true">
-                    <span className="var-card-name">{item.name}</span>
-                    <span className="var-card-tag">{item.tag}</span>
-                  </span>
-                </span>
-              </button>
-            </div>
-          );
-        })}
+        <HudCallouts group={`${v.id}-${loadout}`} items={callouts} show={inView && !dragging} />
+        <span className="var-orbit" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="14" height="14">
+            <path d="M3 12c0-2.8 4-5 9-5s9 2.2 9 5-4 5-9 5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            <path d="M10 14.5 12.2 17 10 19.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          </svg>
+          Drag to orbit
+        </span>
       </section>
+
+      <div className="var-controls">
+        <fieldset className="var-tabs" aria-label="Variant">
+          {VARIANTS.map((item, i) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`var-tab ${i === index ? "is-active" : ""}`}
+              aria-pressed={i === index}
+              onClick={() => go(i)}
+              onPointerEnter={(e) => {
+                if (e.pointerType === "mouse") cue("hover", (e.clientX / window.innerWidth) * 2 - 1);
+              }}
+            >
+              <span className="var-tab-n">{String(i + 1).padStart(2, "0")}</span>
+              {item.name}
+            </button>
+          ))}
+        </fieldset>
+        <fieldset className="var-load" aria-label="Loadout">
+          <span className="var-load-label" aria-hidden="true">
+            Stores
+          </span>
+          {LOADOUT_OPTS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              className={`var-chip ${loadout === o.id ? "is-active" : ""}`}
+              aria-pressed={loadout === o.id}
+              onClick={() => pickLoadout(o.id)}
+            >
+              <b aria-hidden="true">{o.code}</b>
+              {o.label}
+            </button>
+          ))}
+        </fieldset>
+      </div>
 
       <div className="var-foot">
         <div className="var-info" aria-live="polite">

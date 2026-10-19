@@ -4,6 +4,10 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { CloudField } from "./clouds";
 import { buildMove, LEGS, STAGES, smootherstep, type Move } from "./camera-stages";
+import { ANCHORS, JetFx, type AnchorId } from "./jet-fx";
+import { FlightDirector, makePose, poseCamera, poseFromLook, type Pose } from "./flight-director";
+import { flight } from "./flight-store";
+import { ExhaustPlume } from "../site/exhaust-plume";
 
 export const MODEL_URL = "/models/f16.glb";
 // The GLB uses KHR_draco_mesh_compression. The decoder (wasm + wrapper, copied from
@@ -89,6 +93,16 @@ export class JetScene {
   private compositeScene = new THREE.Scene();
   private compositeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private reducedCut: { start: number; to: number; from: number; swapped: boolean } | null = null;
+  private fx = new JetFx();
+  private director = new FlightDirector();
+  private heroPose = makePose();
+  private pose: Pose = makePose();
+  private plume: ExhaustPlume;
+  private plumeOn = false;
+  private camPos = new THREE.Vector3();
+  private projTmp = new THREE.Vector3();
+  private lastYaw = 0;
+  private turn = 0;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -157,6 +171,10 @@ export class JetScene {
     this.compositeScene.add(this.composite);
     this.renderer.autoClear = false;
     this.scene.add(this.jetRoot);
+    this.jetRoot.rotation.order = "YXZ";
+    this.plume = new ExhaustPlume(this.scene);
+    this.plume.glow.position.set(0, -0.6, 6.75);
+    this.plume.glow.visible = false;
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(canvas.parentElement ?? canvas);
@@ -242,9 +260,13 @@ export class JetScene {
       }
     });
     this.jetRoot.add(holder);
+    this.jetRoot.add(this.fx.parts, this.fx.effects, this.plume.glow);
     this.model = holder;
 
     // compile shaders + upload textures before revealing
+    // warm every add-on's shader too, so nothing hitches on first appearance
+    this.fx.parts.traverse((o) => (o.visible = true));
+    this.fx.effects.traverse((o) => (o.visible = true));
     this.renderer.compile(this.scene, this.camera);
     this.renderer.compile(this.cloudScene, this.camera);
     this.events.onProgress?.(1);
@@ -257,7 +279,7 @@ export class JetScene {
       if (this.disposed) return;
       this.raf = requestAnimationFrame(loop);
       // keep a running move on schedule even off-screen, but skip GPU work
-      if (this.paused && !this.busy) {
+      if ((this.paused || this.director.offstage()) && !this.busy) {
         this.last = performance.now();
         return;
       }
@@ -340,16 +362,11 @@ export class JetScene {
     // aircraft: level, stable heading, barely-there float + vibration
     const amp = r ? 0.25 : 1;
     const vib = r ? 0 : 0.0035 * (Math.sin(t * 37.1) + Math.sin(t * 53.7 + 1.3) * 0.6);
-    this.jetRoot.position.set(
-      Math.sin(t * 0.37) * 0.035 * amp,
-      (Math.sin(t * 0.62) * 0.07 + Math.sin(t * 1.43 + 0.8) * 0.02) * amp + vib,
-      0,
-    );
-    this.jetRoot.rotation.set(
-      Math.sin(t * 0.51 + 0.4) * 0.0025 * amp + vib * 0.05,
-      Math.sin(t * 0.29) * 0.0015 * amp,
-      Math.sin(t * 0.71) * 0.004 * amp,
-    );
+    const idleX = Math.sin(t * 0.37) * 0.035 * amp;
+    const idleY = (Math.sin(t * 0.62) * 0.07 + Math.sin(t * 1.43 + 0.8) * 0.02) * amp + vib;
+    const idleRx = Math.sin(t * 0.51 + 0.4) * 0.0025 * amp + vib * 0.05;
+    const idleRy = Math.sin(t * 0.29) * 0.0015 * amp;
+    const idleRz = Math.sin(t * 0.71) * 0.004 * amp;
 
     // camera
     if (this.move) {
@@ -395,26 +412,53 @@ export class JetScene {
       }
     }
 
+    // hero pose → director → final pose
+    const hp = poseFromLook(this.heroPose, this.basePos, this.baseTarget);
+    hp.fov = this.baseFov * this.fovScale;
+    hp.sx = this.shift[0] * this.shiftScale[0];
+    hp.sy = this.shift[1] + this.shiftScale[1];
+    const pose = (this.pose = this.director.sample(hp, this.viewW, this.viewH, t, dt, r));
+
+    this.jetRoot.position.set(idleX, idleY, pose.jz);
+    this.jetRoot.rotation.set(pose.jpitch + idleRx, pose.jyaw + idleRy, pose.roll + idleRz);
+
+    poseCamera(pose, this.camPos);
     const sway = r ? 0 : 1;
     this.camera.position.set(
-      this.basePos.x + Math.sin(t * 0.23) * 0.05 * sway,
-      this.basePos.y + Math.sin(t * 0.31 + 1.1) * 0.04 * sway,
-      this.basePos.z + Math.sin(t * 0.19 + 2.0) * 0.05 * sway,
+      this.camPos.x + Math.sin(t * 0.23) * 0.05 * sway,
+      this.camPos.y + Math.sin(t * 0.31 + 1.1) * 0.04 * sway,
+      this.camPos.z + Math.sin(t * 0.19 + 2.0) * 0.05 * sway,
     );
-    this.camTarget.copy(this.baseTarget);
+    this.camTarget.copy(pose.target);
     this.camera.lookAt(this.camTarget);
-    this.camera.fov = this.baseFov * this.fovScale;
-    // lens shift: slide the frame so the aircraft sits clear of the copy
-    const sx = this.shift[0] * this.shiftScale[0];
-    const sy = this.shift[1] + this.shiftScale[1];
-    this.camera.setViewOffset(
-      this.viewW,
-      this.viewH,
-      -sx * this.viewW,
-      sy * this.viewH,
-      this.viewW,
-      this.viewH,
-    );
+    this.camera.fov = pose.fov;
+    // lens shift: slide the frame so the aircraft sits where the layout wants it
+    this.camera.setViewOffset(this.viewW, this.viewH, -pose.sx * this.viewW, pose.sy * this.viewH, this.viewW, this.viewH);
+    this.camera.updateProjectionMatrix();
+    this.jetRoot.updateMatrixWorld(true);
+
+    // add-ons + exhaust
+    this.fx.update(pose.fx, t, dt, r);
+    const plumeOn = pose.plume > 0.6;
+    if (plumeOn !== this.plumeOn) {
+      this.plumeOn = plumeOn;
+      this.plume.reset();
+    }
+    this.plume.glow.visible = plumeOn;
+    this.plume.setVisible(plumeOn);
+    if (plumeOn) {
+      this.plume.setScale(this.director.histPpu, this.renderer.getPixelRatio());
+      this.plume.update(dt, 0.35 + Math.min(1, Math.abs(pose.jz - this.lastJz) / Math.max(dt, 1e-3) / 14) * 0.65, t, r);
+    }
+    this.lastJz = pose.jz;
+    this.clouds.opacity = pose.clouds;
+
+    // telemetry for the HUD: load factor from bank + turn rate, heading from the view
+    const yawRate = dt > 0 ? Math.abs(((pose.yaw - this.lastYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) / dt : 0;
+    this.lastYaw = pose.yaw;
+    this.turn += (Math.min(yawRate, 3) - this.turn) * Math.min(1, dt * 3);
+    flight.hud.g = Math.min(9.4, 1 / Math.max(0.105, Math.cos(pose.roll)) + this.turn * 1.6);
+    flight.hud.heading = ((THREE.MathUtils.radToDeg(-pose.yaw) % 360) + 360) % 360;
 
     this.clouds.update(this.travel, this.camera, this.jetRoot.position);
     this.render();
@@ -422,6 +466,25 @@ export class JetScene {
   }
 
   private clearColor = new THREE.Color("#050608");
+  private lastJz = 0;
+
+  /** viewport px of a named point on the airframe (for DOM callouts); null if behind the camera */
+  project(anchor: AnchorId, out: { x: number; y: number }) {
+    if (!this.model) return null;
+    const a = ANCHORS[anchor];
+    const v = this.projTmp.set(a[0], a[1], a[2]);
+    this.jetRoot.localToWorld(v);
+    v.project(this.camera);
+    if (v.z > 1) return null;
+    out.x = ((v.x + 1) / 2) * this.viewW;
+    out.y = ((1 - v.y) / 2) * this.viewH;
+    return out;
+  }
+
+  /** which page station currently owns the aircraft */
+  get station() {
+    return this.director.station;
+  }
 
   private render() {
     const r = this.renderer;
@@ -430,15 +493,23 @@ export class JetScene {
     r.setClearColor(this.clearColor, 1);
     r.clear();
     r.render(this.scene, this.camera);
+    if (this.clouds.opacity < 0.01) return;
     // 2. clouds at reduced resolution, depth-tested against the aircraft
     r.setRenderTarget(this.cloudRT);
     r.setClearColor(0x000000, 0);
     r.clear();
     this.sky.visible = false;
+    this.fx.effects.visible = false;
+    const pg = this.plume.glow.visible;
+    this.plume.glow.visible = false;
+    this.plume.setVisible(false);
     this.scene.overrideMaterial = this.depthMat;
     r.render(this.scene, this.camera);
     this.scene.overrideMaterial = null;
     this.sky.visible = true;
+    this.fx.effects.visible = true;
+    this.plume.glow.visible = pg;
+    this.plume.setVisible(pg);
     r.render(this.cloudScene, this.camera);
     // 3. composite (premultiplied) over the frame
     r.setRenderTarget(null);
@@ -472,6 +543,7 @@ export class JetScene {
     this.fovScale = 1 + (k - 1) * 0.22;
     this.viewW = w;
     this.viewH = h;
+    this.fx.setViewHeight(h * this.renderer.getPixelRatio());
     // portrait: less horizontal shift, lift the jet above the bottom captions
     this.shiftScale = a < 0.9 ? [0.15, 0.08] : [1, 0];
     this.camera.updateProjectionMatrix();
@@ -522,6 +594,8 @@ export class JetScene {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
+    this.fx.dispose();
+    this.plume.dispose();
     this.clouds.dispose();
     this.cloudRT.dispose();
     this.depthMat.dispose();

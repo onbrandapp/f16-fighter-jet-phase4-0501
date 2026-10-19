@@ -1,9 +1,41 @@
 import { useRef, useState } from "react";
 import { useExperience } from "../experience/experience-context";
+import { HudCallouts, type Callout } from "../hud/hud-callouts";
+import { flight } from "../jet/flight-store";
 import { CAPABILITIES, requestContact, type Capability } from "./content";
-import { clamp, Dialog, LoopVideo, smooth, tiltHandlers, useFrameWhileVisible, type DialogHandle } from "./shared";
+import { clamp, Dialog, LoopVideo, smooth, useFrameWhileVisible, type DialogHandle } from "./shared";
 
 const N = CAPABILITIES.length;
+
+/** HUD callouts pinned to the live airframe, per capability */
+const CALLOUTS: Record<string, Callout[]> = {
+  agility: [
+    { anchor: "tipR", k: "VTX", v: "Wingtip vortex" },
+    { anchor: "canopy", k: "SEAT", v: "30° recline" },
+    { anchor: "fin", k: "FBW", v: "Quad-redundant", tone: "amber" },
+  ],
+  multirole: [
+    { anchor: "tipR", k: "STA 9", v: "AIM-120 AMRAAM" },
+    { anchor: "st2R", k: "STA 8", v: "AIM-9X" },
+    { anchor: "st3R", k: "STA 7", v: "GBU-31 JDAM", tone: "amber" },
+    { anchor: "pod", k: "CHIN", v: "Targeting pod" },
+  ],
+  ew: [
+    { anchor: "ecm", k: "CL", v: "ECM pod", tone: "amber" },
+    { anchor: "fin", k: "RWR", v: "360° warning" },
+    { anchor: "nozzle", k: "CMDS", v: "Chaff · flare" },
+  ],
+  avionics: [
+    { anchor: "radome", k: "AESA", v: "APG-83 SABR" },
+    { anchor: "canopy", k: "JHMCS", v: "Visor cueing" },
+    { anchor: "cue", k: "HOBS", v: "Target · locked", tone: "amber" },
+  ],
+  supersonic: [
+    { anchor: "nose", k: "M 2.05", v: "Bow shock" },
+    { anchor: "intake", k: "INLET", v: "Fixed geometry" },
+    { anchor: "nozzle", k: "F110", v: "Afterburner", tone: "amber" },
+  ],
+};
 
 /**
  * Sticky vertical reel. Scroll progress through the (tall) section maps onto a
@@ -12,7 +44,6 @@ const N = CAPABILITIES.length;
  */
 export function PerformanceSection() {
   const { reduced, cue } = useExperience();
-  const cardsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const progressRef = useRef<HTMLDivElement>(null);
   const cur = useRef(0);
   const activeRef = useRef(0);
@@ -20,6 +51,8 @@ export function PerformanceSection() {
   const [open, setOpen] = useState<Capability | null>(null);
   const dialog = useRef<DialogHandle>(null);
   const [visible, setVisible] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const settledRef = useRef(false);
 
   const ref = useFrameWhileVisible<HTMLElement>((rect, dt) => {
     const vh = window.innerHeight;
@@ -36,18 +69,16 @@ export function PerformanceSection() {
     if (Math.abs(pos - cur.current) < 0.0005) cur.current = pos;
 
     const c = cur.current;
-    const first = cardsRef.current[0];
-    const gap = (first?.offsetHeight ?? 300) * 0.9;
-    cardsRef.current.forEach((el, i) => {
-      if (!el) return;
-      const d = i - c;
-      const ad = Math.abs(d);
-      const s = 1 - Math.min(ad, 2) * 0.17;
-      el.style.transform = `translate3d(-50%, calc(-50% + ${(d * gap).toFixed(1)}px), 0) scale(${s.toFixed(4)})`;
-      el.style.setProperty("--dim", Math.min(1, ad * 0.7).toFixed(3));
-      el.style.opacity = String(clamp(2.4 - ad));
-      el.style.zIndex = String(10 - Math.round(ad * 2));
-    });
+    flight.perf = c;
+    const target = Math.round(pos);
+    const st =
+      Math.abs(pos - target) < 0.08 &&
+      Math.abs(c - target) < 0.22 &&
+      rect.top <= 1 && rect.bottom >= vh - 1;
+    if (st !== settledRef.current) {
+      settledRef.current = st;
+      setSettled(st);
+    }
     progressRef.current?.style.setProperty("--p", (c / (N - 1)).toFixed(4));
     const a = Math.round(c);
     if (a !== activeRef.current) {
@@ -89,40 +120,11 @@ export function PerformanceSection() {
           </div>
         </div>
 
-        <div className="perf-reel">
-          {CAPABILITIES.map((c, i) => (
-            <button
-              key={c.id}
-              type="button"
-              ref={(el) => {
-                cardsRef.current[i] = el;
-              }}
-              className={`perf-card ${i === active ? "is-active" : ""}`}
-              onClick={() => openCard(c)}
-              onPointerEnter={(e) => {
-                if (e.pointerType === "mouse") cue("hover", (e.clientX / window.innerWidth) * 2 - 1);
-              }}
-              aria-label={`${c.name} — open details`}
-              tabIndex={i === active ? 0 : -1}
-            >
-              <span className="fx-tilt" {...tiltHandlers(!reduced)}>
-                <LoopVideo
-                  src={c.video}
-                  poster={c.poster}
-                  alt=""
-                  play={visible && Math.abs(i - active) <= 1}
-                  reduced={reduced}
-                  className="perf-media"
-                />
-                <span className="perf-card-shade" aria-hidden="true" />
-                <span className="fx-edge" aria-hidden="true" />
-                <span className="perf-card-meta" aria-hidden="true">
-                  <span>{c.index}</span>
-                  <span>{c.short}</span>
-                </span>
-              </span>
-            </button>
-          ))}
+        <div className="perf-stage" data-flight="perf">
+          <HudCallouts group={cap.id} items={CALLOUTS[cap.id] ?? []} show={settled && visible} />
+          <span className="perf-stage-mark" aria-hidden="true">
+            <span>{cap.index}</span> / {String(N).padStart(2, "0")}
+          </span>
         </div>
 
         <div className="perf-desc" aria-live="polite">
@@ -154,6 +156,20 @@ export function PerformanceSection() {
                 </div>
               ))}
             </dl>
+            <button
+              type="button"
+              className="perf-thumb"
+              onClick={() => openCard(cap)}
+              aria-label={`${cap.name} — watch footage`}
+              onPointerEnter={(e) => {
+                if (e.pointerType === "mouse") cue("hover", (e.clientX / window.innerWidth) * 2 - 1);
+              }}
+            >
+              <LoopVideo src={cap.video} poster={cap.poster} alt="" play={visible} reduced={reduced} className="perf-thumb-media" />
+              <span className="perf-thumb-tag" aria-hidden="true">
+                <i /> Footage
+              </span>
+            </button>
             <button type="button" className="fx-link" onClick={() => openCard(cap)}>
               <span>View module</span>
               <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useExperience } from "../experience/experience-context";
 import { FEATURE, MILESTONES, requestContact } from "./content";
 import { clamp, LoopVideo, smooth, useFrameWhileVisible, useInView } from "./shared";
-import { TopDownJet } from "./topdown-jet";
+import { flight } from "../jet/flight-store";
 
 export function HistorySection() {
   const { reduced } = useExperience();
@@ -19,52 +19,27 @@ export function HistorySection() {
     el.style.setProperty("--par", reduced ? "0" : par.toFixed(4));
   });
 
-  // milestone list + top-down jet
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const jetRef = useRef<TopDownJet | null>(null);
+  // milestone list. The persistent 3D jet (flight director) flies down the
+  // track column from above; it publishes where it drew the aircraft.
   const rowsRef = useRef<(HTMLLIElement | null)[]>([]);
   const [activeRow, setActiveRow] = useState(0);
   const activeRowRef = useRef(0);
-  const [nearRef, near] = useInView<HTMLDivElement>({ margin: "600px", once: true });
   const pCur = useRef(0);
-  const time = useRef(0);
-  const [jetState, setJetState] = useState<"idle" | "ready" | "failed">("idle");
-
-  useEffect(() => {
-    if (!near || !canvasRef.current) return;
-    let jet: TopDownJet;
-    try {
-      jet = new TopDownJet(canvasRef.current);
-    } catch (e) {
-      console.warn(e);
-      setJetState("failed");
-      return;
-    }
-    jetRef.current = jet;
-    jet
-      .load()
-      .then(() => setJetState("ready"))
-      .catch((e: unknown) => {
-        console.warn(e);
-        setJetState("failed");
-      });
-    return () => {
-      jet.dispose();
-      jetRef.current = null;
-    };
-  }, [near]);
 
   const listRef = useFrameWhileVisible<HTMLDivElement>((rect, dt) => {
     if (dt === 0) return;
     const vh = window.innerHeight;
-    const m = jetRef.current?.marginPx ?? Math.min(150, rect.height * 0.12);
-    const target = clamp((vh * 0.5 - rect.top - m) / Math.max(1, rect.height - 2 * m));
-    pCur.current = reduced ? target : pCur.current + (target - pCur.current) * (1 - Math.exp(-dt * 5));
-    time.current += dt;
-    const drawnY = jetRef.current?.render(pCur.current, time.current, reduced);
+    let jetY: number;
+    if (flight.scene && flight.hist.live) jetY = flight.hist.y;
+    else {
+      // no WebGL: same path, computed here
+      const m = Math.min(150, rect.height * 0.12);
+      const target = clamp((vh * 0.5 - rect.top - m) / Math.max(1, rect.height - 2 * m));
+      pCur.current = reduced ? target : pCur.current + (target - pCur.current) * (1 - Math.exp(-dt * 5));
+      jetY = rect.top + m + pCur.current * (rect.height - 2 * m);
+    }
 
     // the row nearest the aircraft lights up
-    const jetY = rect.top + (drawnY ?? m + pCur.current * (rect.height - 2 * m));
     let best = 0;
     let bestD = Infinity;
     rowsRef.current.forEach((row, i) => {
@@ -124,7 +99,7 @@ export function HistorySection() {
         </div>
       </div>
 
-      <div ref={nearRef} className="hist-timeline">
+      <div className="hist-timeline">
         <div ref={listRef} className="hist-grid">
           <div className="hist-list-wrap">
             <p className="fx-eyebrow hist-list-label">Operational milestones</p>
@@ -146,8 +121,8 @@ export function HistorySection() {
               ))}
             </ol>
           </div>
-          <div className={`hist-track is-${jetState}`} aria-hidden="true">
-            <canvas ref={canvasRef} className="hist-canvas" aria-label="The F-16 seen from above" />
+          <div className="hist-track" data-flight="hist" aria-hidden="true">
+            <span className="hist-track-rail" />
           </div>
         </div>
       </div>

@@ -91,10 +91,13 @@ export function SiteFooter() {
 
       <div className="foot-bottom">
         <p>
-          © 2026 Falcon. All rights reserved. IP Owned by{" "}
-          <a className="foot-credit" href="https://feelgoodstudiodark.framer.website/" target="_blank" rel="noopener noreferrer">
-            FeelGood Studio
-          </a>
+          <span className="foot-rights">© 2026 Falcon. All rights reserved.</span>{" "}
+          <span className="foot-ip">
+            IP Owned by{" "}
+            <a className="foot-credit" href="https://feelgoodstudiodark.framer.website/" target="_blank" rel="noopener noreferrer">
+              FeelGood Studio
+            </a>
+          </span>
         </p>
         <p className="foot-disclaimer">
           An independent showcase. Imagery and video are AI-generated illustrations; not affiliated with Lockheed Martin

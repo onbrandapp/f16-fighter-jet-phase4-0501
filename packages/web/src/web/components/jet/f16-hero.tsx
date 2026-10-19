@@ -6,6 +6,7 @@ import { atTop, smoothScrollTo } from "../experience/smooth-scroll";
 import { useExperience } from "../experience/experience-context";
 import { STAGE_COPY } from "./stage-copy";
 import { STAGE_COUNT } from "./camera-stages";
+import { flight } from "./flight-store";
 
 type Phase = "loading" | "ready" | "error";
 
@@ -67,6 +68,7 @@ export function F16Hero({ onReady, nextId }: HeroProps) {
       return;
     }
     sceneRef.current = scene;
+    flight.scene = scene;
     scene
       .load()
       .then(() => {
@@ -83,6 +85,7 @@ export function F16Hero({ onReady, nextId }: HeroProps) {
     return () => {
       scene.dispose();
       sceneRef.current = null;
+      if (flight.scene === scene) flight.scene = null;
     };
   }, []);
 
@@ -122,19 +125,17 @@ export function F16Hero({ onReady, nextId }: HeroProps) {
     });
   }, [phase, step, release]);
 
-  // engaged flag (drives touch-action) + pause rendering when off-screen
+  // engaged flag (drives touch-action). The scene keeps flying below the hero —
+  // it decides for itself when it is covered (past the last station).
   useEffect(() => {
     const onScroll = () => setEngaged(window.scrollY <= 1);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    const el = rootRef.current;
-    const io = new IntersectionObserver(([en]) => sceneRef.current?.setPaused(!en?.isIntersecting), {
-      threshold: 0,
-    });
-    if (el) io.observe(el);
+    const onVis = () => sceneRef.current?.setPaused(document.hidden);
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      io.disconnect();
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
 
@@ -149,7 +150,29 @@ export function F16Hero({ onReady, nextId }: HeroProps) {
   const showHero = stage === 0 && !moving;
   const ready = phase === "ready";
 
+  const pct = Math.round(progress * 100);
+  const airframe = Math.min(1, progress / 0.92);
+  const steps: { k: string; v: string; s: "ok" | "run" | "wait" }[] = [
+    { k: "Data link", v: progress > 0 ? "OK" : "SYNC", s: progress > 0 ? "ok" : "run" },
+    {
+      k: "Airframe",
+      v: airframe >= 1 ? "OK" : `${String(Math.round(airframe * 100)).padStart(2, "0")}%`,
+      s: airframe >= 1 ? "ok" : progress > 0 ? "run" : "wait",
+    },
+    { k: "Decode + stores", v: progress >= 1 ? "OK" : progress >= 0.92 ? "RUN" : "--", s: progress >= 1 ? "ok" : progress >= 0.92 ? "run" : "wait" },
+    { k: "Shaders · weather", v: ready ? "OK" : progress >= 1 ? "RUN" : "--", s: ready ? "ok" : progress >= 1 ? "run" : "wait" },
+  ];
+  const R = 46;
+  const C = 2 * Math.PI * R;
+
   return (
+    <>
+    <div className="sky-layer" aria-hidden="true">
+      <canvas ref={canvasRef} className="jet-canvas" aria-label="F-16 3D scene" />
+      <div className="jet-vignette" />
+      <div className="jet-grain" />
+      <div ref={fadeRef} className="jet-fade" />
+    </div>
     <section
       ref={rootRef}
       className="jet-hero"
@@ -159,10 +182,6 @@ export function F16Hero({ onReady, nextId }: HeroProps) {
       data-engaged={engaged ? "1" : "0"}
       id="top"
     >
-      <canvas ref={canvasRef} className="jet-canvas" aria-hidden="true" />
-      <div className="jet-vignette" aria-hidden="true" />
-      <div className="jet-grain" aria-hidden="true" />
-      <div ref={fadeRef} className="jet-fade" aria-hidden="true" />
 
       {/* stop 0 headline */}
       <div className={`jet-intro ${ready && showHero ? "is-in" : ""}`} aria-hidden={!showHero}>
@@ -236,7 +255,7 @@ export function F16Hero({ onReady, nextId }: HeroProps) {
       </ol>
 
       {/* loading */}
-      <div className={`jet-loader ${ready ? "is-done" : ""}`} aria-live="polite" aria-busy={!ready}>
+      <div className={`jet-loader ${ready ? "is-done" : ""}`} aria-busy={!ready}>
         {phase === "error" ? (
           <div className="jet-loader-inner">
             <p className="jet-eyebrow">Signal lost</p>
@@ -246,18 +265,54 @@ export function F16Hero({ onReady, nextId }: HeroProps) {
             </button>
           </div>
         ) : (
-          <div className="jet-loader-inner">
-            <p className="jet-eyebrow">Falcon · Pre-flight</p>
-            <div className="jet-loader-bar">
-              <span style={{ transform: `scaleX(${Math.max(0.02, progress)})` }} />
+          <div className="boot">
+            <div className="boot-dial" aria-hidden="true">
+              <svg viewBox="0 0 120 120">
+                {Array.from({ length: 48 }, (_, i) => (
+                  <line
+                    key={i}
+                    x1="60"
+                    y1="3"
+                    x2="60"
+                    y2={i % 4 === 0 ? "10" : "7"}
+                    transform={`rotate(${i * 7.5} 60 60)`}
+                    className={i / 48 <= progress ? "on" : ""}
+                  />
+                ))}
+                <circle cx="60" cy="60" r={R} className="boot-track" />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r={R}
+                  className="boot-arc"
+                  strokeDasharray={`${(C * Math.max(0.01, progress)).toFixed(2)} ${C.toFixed(2)}`}
+                  transform="rotate(-90 60 60)"
+                />
+                <path d="M52 60h-8M68 60h8M60 52v-8M60 68v8" className="boot-cross" />
+              </svg>
+              <span className="boot-pct">
+                {String(pct).padStart(3, "0")}
+                <i>%</i>
+              </span>
             </div>
-            <p className="jet-loader-meta">
-              <span>{progress < 0.92 ? "Loading airframe" : "Calibrating clouds"}</span>
-              <span>{Math.round(progress * 100)}%</span>
-            </p>
+            <div className="boot-read">
+              <p className="boot-title">
+                F-16 · Pre-flight <span>BIT</span>
+              </p>
+              <ul className="boot-steps">
+                {steps.map((st) => (
+                  <li key={st.k} className={`is-${st.s}`}>
+                    <span>{st.k}</span>
+                    <b>{st.v}</b>
+                  </li>
+                ))}
+              </ul>
+              <output className="boot-status">{ready ? "Systems go" : progress < 0.92 ? "Loading airframe" : "Calibrating"}</output>
+            </div>
           </div>
         )}
       </div>
     </section>
+    </>
   );
 }

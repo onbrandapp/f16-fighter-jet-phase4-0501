@@ -12,6 +12,8 @@ const LIFE = 1.5; // s
 const EXHAUST_SPEED = 5.5; // world units / s, rearward
 const BASE_RATE = 46; // particles / s when holding position
 const SPEED_RATE = 150; // extra particles / s at full travel speed
+/** puffs closer than this behind the nozzle (world units) are cleared */
+const CLEAR = 0.2;
 
 const plumeVert = /* glsl */ `
   attribute float aAge;
@@ -144,6 +146,10 @@ export class ExhaustPlume {
     this.glowMat.uniforms.uScale.value = pxPerUnit * pixelRatio;
   }
 
+  setVisible(v: boolean) {
+    this.points.visible = v;
+  }
+
   /** Forget the last nozzle position (after a jump, so no streak is drawn). */
   reset() {
     this.hasPrev = false;
@@ -180,11 +186,26 @@ export class ExhaustPlume {
     }
 
     const step = Math.min(dt, 0.1);
+    const nx = this.nozzleW.x;
+    const nz = this.nozzleW.z;
+    const rx = this.rear.x;
+    const rz = this.rear.z;
     // age + move live particles
     for (let i = 0; i < COUNT; i++) {
       if (this.age[i] >= 1) continue;
-      this.age[i] += dt / this.life[i];
       const k = i * 3;
+      // how far behind the nozzle this puff sits along the exhaust axis. When the
+      // jet backs up faster than its exhaust (a fast scroll reversal, momentum
+      // flicks on touch) it would fly into its own smoke, so anything that ends
+      // up level with or ahead of the nozzle fades out fast instead of drawing
+      // over the airframe.
+      const behind = (this.pos[k] - nx) * rx + (this.pos[k + 2] - nz) * rz;
+      const overtaken = behind < CLEAR ? 1 + (CLEAR - behind) * 6 : 0;
+      this.age[i] += dt / this.life[i] + overtaken * dt * 3;
+      if (this.age[i] >= 1) {
+        this.age[i] = 1;
+        continue;
+      }
       const drag = Math.exp(-step * 1.6);
       this.vel[k] *= drag;
       this.vel[k + 1] *= drag;
@@ -197,6 +218,13 @@ export class ExhaustPlume {
     // emit along the path the nozzle swept this frame, so fast scrolling still
     // leaves a continuous trail rather than dotted puffs
     const from = this.hasPrev ? this.prevNozzle : this.nozzleW;
+    // jet's own rearward speed this frame: exhaust always leaves at least this
+    // fast relative to the ground, so the trail stays behind a reversing jet
+    const back =
+      this.hasPrev && dt > 0
+        ? Math.max(0, ((this.nozzleW.x - from.x) * rx + (this.nozzleW.z - from.z) * rz) / Math.max(dt, 1 / 120))
+        : 0;
+    const carrySp = Math.min(back, 40);
     const rate = BASE_RATE + SPEED_RATE * travel;
     this.carry += rate * Math.min(dt, 0.5);
     const swept = from.distanceTo(this.nozzleW);
@@ -208,12 +236,12 @@ export class ExhaustPlume {
       const i = this.head;
       this.head = (this.head + 1) % COUNT;
       const k = i * 3;
-      const sp = EXHAUST_SPEED * (0.75 + Math.random() * 0.5);
+      const sp = EXHAUST_SPEED * (0.75 + Math.random() * 0.5) + carrySp;
       // particles born earlier in the frame have already flown a little way back
-      const back = 0.15 + Math.random() * 0.2 + sp * (1 - f) * Math.min(dt, 0.1);
-      this.pos[k] = THREE.MathUtils.lerp(from.x, this.nozzleW.x, f) + this.rear.x * back;
+      const off = 0.15 + Math.random() * 0.2 + sp * (1 - f) * Math.min(dt, 0.1);
+      this.pos[k] = THREE.MathUtils.lerp(from.x, this.nozzleW.x, f) + rx * off;
       this.pos[k + 1] = THREE.MathUtils.lerp(from.y, this.nozzleW.y, f) - 0.6;
-      this.pos[k + 2] = THREE.MathUtils.lerp(from.z, this.nozzleW.z, f) + this.rear.z * back;
+      this.pos[k + 2] = THREE.MathUtils.lerp(from.z, this.nozzleW.z, f) + rz * off;
       const spread = 0.7;
       this.vel[k] = this.rear.x * sp + (Math.random() - 0.5) * spread;
       this.vel[k + 1] = 0;
