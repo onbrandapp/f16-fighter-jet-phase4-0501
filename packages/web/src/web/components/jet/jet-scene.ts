@@ -7,6 +7,8 @@ import { buildMove, LEGS, STAGES, smootherstep, type Move } from "./camera-stage
 import { ANCHORS, JetFx, type AnchorId } from "./jet-fx";
 import { FlightDirector, makePose, poseCamera, poseFromLook, type Pose } from "./flight-director";
 import { flight } from "./flight-store";
+import { LightRig, type LightTarget } from "./light-rig";
+import { HistBackdrop } from "./hist-backdrop";
 import { ExhaustPlume } from "../site/exhaust-plume";
 import { radiusFt } from "../site/turn-model";
 import { TurnViz } from "./turn-viz";
@@ -102,6 +104,9 @@ export class JetScene {
   private plume: ExhaustPlume;
   private plumeOn = false;
   private turnViz = new TurnViz();
+  private rig!: LightRig;
+  private backdrop = new HistBackdrop();
+  private lightTarget: LightTarget = { a: "storm" };
   private camPos = new THREE.Vector3();
   private projTmp = new THREE.Vector3();
   private lastYaw = 0;
@@ -209,24 +214,35 @@ export class JetScene {
   }
 
   private addLights() {
-    const hemi = new THREE.HemisphereLight("#7d8a9c", "#0a0b0d", 0.25);
-    this.scene.add(hemi);
-    // diffused moon-key through the cloud ceiling, upper front-left
-    const key = new THREE.DirectionalLight("#d5dde8", 1.25);
-    key.position.set(-9, 16, -10);
-    this.scene.add(key);
-    // cool rim from behind to trace the silhouette
-    const rim = new THREE.DirectionalLight("#9fb1c9", 1.1);
-    rim.position.set(14, 5, 18);
-    this.scene.add(rim);
-    // soft side fill so the camera side never falls fully to black
-    const fill = new THREE.DirectionalLight("#5d6878", 0.3);
-    fill.position.set(18, -2, -4);
-    this.scene.add(fill);
-    // faint bounce from the cloud deck below
-    const bounce = new THREE.DirectionalLight("#3a3f47", 0.4);
-    bounce.position.set(0, -10, 2);
-    this.scene.add(bounce);
+    // hemi / moon-key / rim / fill / bounce, recoloured per section by the rig
+    this.rig = new LightRig(this.scene, this.sky.material as THREE.ShaderMaterial, this.renderer);
+    this.scene.add(this.backdrop.mesh);
+  }
+
+  /** which palette the current station wants */
+  private pickLight(): LightTarget {
+    const lt = this.lightTarget;
+    lt.b = undefined;
+    lt.t = 0;
+    switch (this.director.station) {
+      case "perf":
+        lt.a = "perf";
+        lt.b = "gold";
+        lt.t = Math.min(1, Math.max(0, flight.perf - 3));
+        break;
+      case "turn":
+        lt.a = "turn";
+        break;
+      case "hist":
+        lt.a = `hist${flight.hist.row}`;
+        break;
+      case "var":
+        lt.a = `var-${flight.variant.id}`;
+        break;
+      default:
+        lt.a = "storm";
+    }
+    return lt;
   }
 
   async load(): Promise<void> {
@@ -467,6 +483,11 @@ export class JetScene {
     if (this.director.station === "turn") flight.hud.g = tn;
     flight.hud.heading = ((THREE.MathUtils.radToDeg(-pose.yaw) % 360) + 360) % 360;
 
+    // per-section light + the history terrain plate
+    this.rig.update(this.scene, this.pickLight(), dt, r);
+    if (this.director.station === "turn") this.backdrop.preload();
+    this.backdrop.update(this.director.histWeight, flight.hist.row, flight.hist.p, dt, r);
+
     this.clouds.update(this.travel, this.camera, this.jetRoot.position);
     this.render();
     this.adaptQuality(dt);
@@ -506,6 +527,8 @@ export class JetScene {
     r.setClearColor(0x000000, 0);
     r.clear();
     this.sky.visible = false;
+    const bd = this.backdrop.mesh.visible;
+    this.backdrop.mesh.visible = false;
     this.fx.effects.visible = false;
     const pg = this.plume.glow.visible;
     this.plume.glow.visible = false;
@@ -514,6 +537,7 @@ export class JetScene {
     r.render(this.scene, this.camera);
     this.scene.overrideMaterial = null;
     this.sky.visible = true;
+    this.backdrop.mesh.visible = bd;
     this.fx.effects.visible = true;
     this.plume.glow.visible = pg;
     this.plume.setVisible(pg);
@@ -550,6 +574,7 @@ export class JetScene {
     this.fovScale = 1 + (k - 1) * 0.22;
     this.viewW = w;
     this.viewH = h;
+    this.backdrop.setViewport(w, h);
     this.fx.setViewHeight(h * this.renderer.getPixelRatio());
     // portrait: less horizontal shift, lift the jet above the bottom captions
     this.shiftScale = a < 0.9 ? [0.15, 0.08] : [1, 0];
@@ -604,6 +629,7 @@ export class JetScene {
     this.fx.dispose();
     this.plume.dispose();
     this.turnViz.dispose();
+    this.backdrop.dispose();
     this.clouds.dispose();
     this.cloudRT.dispose();
     this.depthMat.dispose();

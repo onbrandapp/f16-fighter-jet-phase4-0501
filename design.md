@@ -12,6 +12,16 @@ Night flight inside weather. Distant environment almost black; jet and nearby cl
 - `--text` #e8ebf0, `--text-dim` rgba(232,235,240,0.56), `--hairline` rgba(255,255,255,0.12)
 - Accent: `--signal` #c9a86a (warm brass, used sparingly: progress fill, button hover line)
 
+## Light rhythm (phase 5)
+Each section owns its light (`jet/light-rig.ts`): sky gradient + hemi/key/rim/fill/bounce + exposure, eased (~0.5 s) toward the station's palette; reduced motion snaps. Sky palette hexes are display values.
+- Hero / contact: storm (original night values) — dark
+- Performance: cool clear high altitude — light; Supersonic card blends to golden hour (low warm sun, amber sky)
+- Turn: cold clear blue
+- Feature video: storm footage kept as the one dark beat
+- History: per milestone row, terrain plate behind the list (`jet/hist-backdrop.ts`, `/media/hist_0..6.jpg`) crossfades as the jet passes: 1974 lakebed midday, 1979 snowy Wasatch blue morning, 1981 violet dusk river, 1991 desert dawn, 1994–99 overcast Balkans, 2001– arctic ice, Today blue-hour coast. Left/list side scrimmed (all of it on portrait) + row text-shadow.
+- Variants: AB blue winter morning, CD desert-tan dawn, EF amber sunset, V cold silver.
+Card posters: `p5_supersonic_gold.jpg`, `v1_ab_lit`…`v4_viper_lit.jpg` (originals kept).
+
 ## Typography
 - Display: **Instrument Serif** (regular + italic) — headline and stage titles, tight tracking, large.
 - UI/body: **Manrope** 300–600 — nav, labels (uppercase, 0.28em tracking, 10–11px), body 14–15px.

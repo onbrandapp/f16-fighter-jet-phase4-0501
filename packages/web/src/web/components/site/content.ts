@@ -92,7 +92,7 @@ export const CAPABILITIES: Capability[] = [
       { value: "> 1 : 1", label: "Thrust-to-weight" },
       { value: "1", label: "Afterburning engine" },
     ],
-    poster: "/media/p5_supersonic.jpg",
+    poster: "/media/p5_supersonic_gold.jpg",
   },
 ];
 
@@ -151,7 +151,7 @@ export const VARIANTS: Variant[] = [
       { value: "Air superiority", label: "Primary role" },
       { value: "1 / 2", label: "Seats (A / B)" },
     ],
-    poster: "/media/v1_ab.jpg",
+    poster: "/media/v1_ab_lit.jpg",
   },
   {
     id: "cd",
@@ -167,7 +167,7 @@ export const VARIANTS: Variant[] = [
       { value: "Multi-role, SEAD", label: "Primary role" },
       { value: "1 / 2", label: "Seats (C / D)" },
     ],
-    poster: "/media/v2_cd.jpg",
+    poster: "/media/v2_cd_lit.jpg",
   },
   {
     id: "ef",
@@ -183,7 +183,7 @@ export const VARIANTS: Variant[] = [
       { value: "Conformal tanks", label: "Range" },
       { value: "1 / 2", label: "Seats (E / F)" },
     ],
-    poster: "/media/v3_ef.jpg",
+    poster: "/media/v3_ef_lit.jpg",
   },
   {
     id: "v",
@@ -199,7 +199,7 @@ export const VARIANTS: Variant[] = [
       { value: "12,000 h", label: "Service life" },
       { value: "1 / 2", label: "Seats" },
     ],
-    poster: "/media/v4_viper.jpg",
+    poster: "/media/v4_viper_lit.jpg",
   },
 ];
 

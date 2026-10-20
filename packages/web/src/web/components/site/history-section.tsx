@@ -51,6 +51,7 @@ export function HistorySection() {
         best = i;
       }
     });
+    flight.hist.row = best;
     if (best !== activeRowRef.current) {
       activeRowRef.current = best;
       setActiveRow(best);

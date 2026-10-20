@@ -509,6 +509,8 @@
   border-top: 1px solid var(--hairline);
 }
 .hist-list li {
+  /* the timeline sits over the era terrain plates (jet/hist-backdrop.ts) */
+  text-shadow: 0 1px 14px rgba(2, 3, 4, 0.7), 0 0 2px rgba(2, 3, 4, 0.5);
   display: grid;
   grid-template-columns: minmax(96px, 150px) minmax(0, 1fr);
   gap: 24px;

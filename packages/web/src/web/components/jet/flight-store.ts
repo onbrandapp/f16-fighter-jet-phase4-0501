@@ -12,8 +12,8 @@ export const flight = {
   scene: null as JetScene | null,
   /** Performance reel position, 0..N-1 (eased, continuous) */
   perf: 0,
-  /** History timeline: where the director drew the jet (viewport px) */
-  hist: { y: 0, x: 0, live: false, p: 0 },
+  /** History timeline: where the director drew the jet (viewport px), and the lit milestone row */
+  hist: { y: 0, x: 0, live: false, p: 0, row: 0 },
   /** Variants: selected airframe + loadout, and orbit offsets (radians) from dragging */
   variant: { id: "ab", loadout: "a2a" as Loadout, yaw: 0, pitch: 0, dragging: false },
   /** Turn explainer: airspeed (kt) and load factor (g) the reader has set */
