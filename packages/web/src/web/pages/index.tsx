@@ -3,6 +3,7 @@ import { ExperienceProvider, useExperience } from "../components/experience/expe
 import { SmoothScroll } from "../components/experience/smooth-scroll";
 import { HudOverlay, Reticle } from "../components/hud/hud-overlay";
 import { F16Hero } from "../components/jet/f16-hero";
+import { ShockRing } from "../components/jet/shock-ring";
 import { ContactSection } from "../components/site/contact-section";
 import { HistorySection } from "../components/site/history-section";
 import { PerformanceSection } from "../components/site/performance-section";
@@ -32,6 +33,7 @@ function Index() {
         <ContactSection />
       </main>
       <SiteFooter />
+      <ShockRing />
       <HudOverlay />
       <Reticle />
     </ExperienceProvider>

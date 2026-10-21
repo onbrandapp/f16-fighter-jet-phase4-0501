@@ -248,7 +248,10 @@ export class FlightDirector {
   /** 0 hero … 1 fully handed to the page stations (for HUD + render decisions) */
   cruise = 0;
   /** which station dominates: hero | perf | hist | var | off */
-  station: "hero" | "perf" | "turn" | "hist" | "var" | "off" = "hero";
+  station: "hero" | "perf" | "turn" | "hist" | "var" | "foot" | "off" = "hero";
+  private footPose = makePose();
+  private footT = 0;
+  private footInit = false;
   /** world units → px for the history pose (plume sizing) */
   histPpu = 20;
   histWeight = 0;
@@ -262,13 +265,18 @@ export class FlightDirector {
     return el;
   }
 
-  /** past the last station (contact / footer cover the canvas) */
+  /** between the last station and the footer pass (contact covers the canvas) */
   offstage(): boolean {
     const v = this.els.section;
     const el = v && v.isConnected ? v : document.getElementById("variants");
     this.els.section = el;
     if (!el) return false;
-    return el.getBoundingClientRect().bottom < -40;
+    if (el.getBoundingClientRect().bottom >= -40) return false;
+    const f = this.els.footStage;
+    const foot = f && f.isConnected ? f : document.querySelector('[data-flight="foot-stage"]');
+    this.els.footStage = foot;
+    if (!foot) return true;
+    return foot.getBoundingClientRect().top > (window.innerHeight || 800) + 40;
   }
 
   /**
@@ -292,6 +300,21 @@ export class FlightDirector {
       return hero;
     }
     const pr = perfEl.getBoundingClientRect();
+
+    // ── footer fly-past: contact covers everything before it, so it simply takes over
+    const footStage = this.q("foot-stage", now);
+    if (footStage) {
+      const fr = footStage.getBoundingClientRect();
+      if (fr.top < vh) {
+        this.footStation(this.footPose, fr, W, H, vh, t, dt, reduced);
+        this.station = "foot";
+        this.cruise = 1;
+        this.histWeight = 0;
+        flight.hud.station = "foot";
+        return this.footPose;
+      }
+    }
+    flight.foot.w = 0;
 
     // ── performance: blend between neighbouring capability stations
     const n = CAP_STATIONS.length;
@@ -451,6 +474,48 @@ export class FlightDirector {
     p.clouds = 0;
     p.plume = 0;
     this.place(p, b, this.fitPx(b, W, H, mobile) * (mobile ? 0.66 : 0.6), W, H);
+  }
+
+  /**
+   * Footer: a flat side-profile pass, right → left, tied to scroll through
+   * the footer stage, in front of the FALCON wordmark. Reduced motion parks
+   * the jet beside the wordmark instead of sweeping it across the screen.
+   */
+  private footStation(p: Pose, r: DOMRect, W: number, H: number, vh: number, t: number, dt: number, reduced: boolean) {
+    const s = clamp((vh - r.top) / Math.max(1, r.height));
+    const goal = reduced ? 0.62 : clamp((s - 0.45) / 0.5);
+    if (!this.footInit || reduced || dt === 0) this.footT = goal;
+    else this.footT += (goal - this.footT) * (1 - Math.exp(-dt * 6));
+    this.footInit = true;
+    const ft = this.footT;
+    const mobile = W < 760;
+    const len = Math.min(mobile ? W * 0.82 : W * 0.56, 920);
+    // the sticky frame holds the wordmark at ~44% of the viewport height
+    const anchor = boxOf(this.q("foot", t));
+    const cy = anchor ? anchor.cy : Math.max(r.top, 0) + vh * 0.44;
+    const travel = W / 2 + len * 0.62;
+    const cx = W / 2 + travel * (1 - 2 * ft);
+    const drift = reduced ? 0 : 1;
+    p.target.set(0, -0.1, 0.8);
+    p.yaw = -1.6;
+    p.pitch = 0.04;
+    p.fov = 28;
+    // a slight climb through the pass, wings rocking a touch
+    p.roll = (Math.sin(ft * Math.PI * 1.3) * 0.05 + Math.sin(t * 0.8) * 0.01) * drift;
+    p.jpitch = 0.035 + 0.03 * ft * drift;
+    p.jyaw = 0;
+    p.jz = 0;
+    for (const k of FX_KEYS) p.fx[k] = 0;
+    p.fx.shock = 0.14;
+    p.fx.tip120 = 1;
+    p.clouds = 0;
+    p.plume = 0;
+    this.place(p, { cx, cy: cy - (mobile ? 0.02 : 0.05) * vh * (ft - 0.5) * drift, w: len, h: len, top: 0, bottom: 0 }, len, W, H);
+    // presence: strongest as the jet crosses the middle of the screen
+    const x = (cx - W / 2) / (W / 2);
+    flight.foot.t = ft;
+    flight.foot.x = clamp(x, -1, 1);
+    flight.foot.w = clamp(1.25 - Math.abs(x)) * clamp(s * 3);
   }
 
   private variantStation(p: Pose, b: Box, W: number, H: number, t: number, dt: number, reduced: boolean) {

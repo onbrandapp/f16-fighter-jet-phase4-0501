@@ -37,8 +37,22 @@ Card posters: `p5_supersonic_gold.jpg`, `v1_ab_lit`…`v4_viper_lit.jpg` (origin
 - Text fades/rises 600ms after the camera settles; fades out at move start.
 - Reduced motion: short crossfade cuts, no vibration, slower clouds.
 
-## Audio
-Ambient bed (drone + wind) + engine hum loop + whoosh on each move. Off by default; explicit toggle.
+## Audio (phase 6)
+Off by default; nav chip toggle (live analyser level bars), `M` shortcut (ignored in form fields), one-time hint (localStorage `falcon.soundHint`).
+Chain: beds bus + fx bus → master 0.55 → LPF 9k → compressor → analyser → out.
+- Beds: ambient + turbine drone (sx-drone, LPF 1400, always on) + afterburner (sx-burner) whose gain 0.035→0.62, LPF 380→~5.4k Hz, rate 0.9→1.12 follow scroll speed (full at 2600 px/s).
+- Section handoff (`falcon:station`): sweep a/b alternating, bandpass ramp + pan, ≥650 ms apart.
+- Supersonic (`falcon:boom`, perf > 3.6, re-arms < 3): boom + beds ducked to 0.5 for 1.2 s; DOM shock ring from the nose (not in reduced motion).
+- Footer: burner presence panned by jet x, flyby sting once per pass (R→L). Hero whoosh + UI cues kept.
+
+## Footer (phase 6)
+`.foot-stage` 180svh (150 mobile, 100 reduced) with a sticky WebGL "FALCON" wordmark (jet/foot-wordmark.ts, canvas-text quad heated by the nozzle). Director `foot` station: side profile, crosses right→left with scroll; faint shock cone (0.14). Slim links/legal row below. Palette `foot` (night, warm rim).
+
+## Details (phase 6)
+- Easing tokens: `--ease` (default), `--ease-out` (bursts), `--ease-in-out` (loops). No bare `ease`; `linear`/`steps` only where intentional.
+- `::selection` gold on ink; `:focus-visible` 1px gold outline on nav, chips, CTAs, links, presets.
+- Icons: falcon-icon.svg, falcon.ico, apple-touch-icon.png. OG/Twitter: og-falcon.jpg 1200×630.
+- 404 (`pages/not-found.tsx`): HUD radar "No contact", squawk 7600, "Return to base".
 
 ## Persistent jet (phase 3)
 - One fixed WebGL scene (`.sky-layer`, z 0) sits behind the whole page; sections are transparent so the same GLB carries every chapter. `flight-director.ts` blends per-section poses from `flight-store.ts` (hero stage, perf index, history year, variant yaw/pitch/loadout).

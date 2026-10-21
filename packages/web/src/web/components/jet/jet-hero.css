@@ -8,6 +8,8 @@
   --display: "Instrument Serif", "Times New Roman", serif;
   --ui: "Manrope", system-ui, sans-serif;
   --ease: cubic-bezier(0.22, 0.61, 0.21, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 html,
@@ -177,7 +179,7 @@ html.is-locked body {
   font-size: 11px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
-  transition: color 0.3s;
+  transition: color 0.3s var(--ease);
 }
 .jet-links a:hover,
 .jet-links a:focus-visible {
@@ -207,13 +209,16 @@ html.is-locked body {
   white-space: nowrap;
   flex: none;
   cursor: pointer;
-  transition: color 0.3s, border-color 0.3s, background 0.3s;
+  transition: color 0.3s var(--ease), border-color 0.3s var(--ease), background 0.3s var(--ease);
 }
 .jet-chip:hover,
 .jet-chip:focus-visible {
   color: var(--text);
   border-color: rgba(255, 255, 255, 0.28);
-  outline: none;
+}
+.jet-chip:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 3px;
 }
 .jet-sound.is-on {
   color: var(--text);
@@ -239,21 +244,103 @@ html.is-locked body {
 }
 .jet-eq i {
   width: 2px;
-  height: 3px;
+  height: 11px;
   background: currentColor;
   border-radius: 1px;
-  transition: height 0.3s;
+  transform: scaleY(0.27);
+  transform-origin: 50% 100%;
+  transition: background-color 0.3s var(--ease);
 }
 .jet-sound.is-on .jet-eq i {
-  animation: jet-eq 1.1s ease-in-out infinite;
   background: var(--signal);
 }
-.jet-sound.is-on .jet-eq i:nth-child(2) { animation-delay: -0.3s; }
-.jet-sound.is-on .jet-eq i:nth-child(3) { animation-delay: -0.6s; }
-.jet-sound.is-on .jet-eq i:nth-child(4) { animation-delay: -0.85s; }
-@keyframes jet-eq {
-  0%, 100% { height: 3px; }
-  50% { height: 11px; }
+
+/* one-time sound nudge, under the nav controls */
+.sound-hint {
+  position: absolute;
+  top: calc(100% - 12px);
+  right: clamp(20px, 4vw, 56px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  border: 1px solid rgba(201, 168, 106, 0.32);
+  border-radius: 999px;
+  background: rgba(8, 9, 12, 0.72);
+  backdrop-filter: blur(12px);
+  color: var(--text-dim);
+  font: 500 12px/1.2 var(--ui);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+}
+.sound-hint.is-in {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.sound-hint p {
+  margin: 0;
+}
+.sound-hint b {
+  color: var(--text);
+  font-weight: 600;
+}
+.sound-hint-key {
+  margin-left: 8px;
+  color: var(--text-faint);
+}
+.sound-hint kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 2px 5px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  font: 600 10px/1.2 var(--ui);
+  text-align: center;
+  color: var(--text);
+}
+.sound-hint-on {
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--signal);
+  color: #0b0a08;
+  font: 700 10px/1 var(--ui);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: filter 0.3s var(--ease);
+}
+.sound-hint-on:hover {
+  filter: brightness(1.1);
+}
+.sound-hint-x {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.3s var(--ease);
+}
+.sound-hint-x:hover {
+  color: var(--text);
+}
+@media (max-width: 760px) {
+  .sound-hint {
+    left: 16px;
+    right: 16px;
+    justify-content: space-between;
+  }
+  .sound-hint-key {
+    display: none;
+  }
 }
 
 /* ---------- type ---------- */
@@ -339,7 +426,7 @@ html.is-locked body {
   text-transform: uppercase;
   cursor: pointer;
   overflow: hidden;
-  transition: border-color 0.4s, background 0.4s;
+  transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
 }
 .jet-cta::after {
   content: "";
@@ -357,7 +444,10 @@ html.is-locked body {
 .jet-cta:focus-visible {
   border-color: rgba(255, 255, 255, 0.45);
   background: rgba(232, 235, 240, 0.1);
-  outline: none;
+}
+.jet-cta:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 4px;
 }
 .jet-cta:hover::after,
 .jet-cta:focus-visible::after {
@@ -475,13 +565,16 @@ html.is-locked body {
   color: var(--text-dim);
   cursor: pointer;
   pointer-events: auto;
-  transition: color 0.3s, border-color 0.3s;
+  transition: color 0.3s var(--ease), border-color 0.3s var(--ease);
 }
 .jet-caption-foot:hover,
 .jet-caption-foot:focus-visible {
   color: var(--text);
   border-color: var(--signal);
-  outline: none;
+}
+.jet-caption-foot:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 4px;
 }
 
 /* ---------- progress ---------- */
@@ -514,7 +607,7 @@ html.is-locked body {
   color: var(--text-faint);
   opacity: 0;
   transform: translateX(6px);
-  transition: opacity 0.5s, transform 0.5s var(--ease), color 0.5s;
+  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease), color 0.5s var(--ease);
 }
 .jet-progress li.active .jet-progress-label {
   opacity: 1;
@@ -599,7 +692,7 @@ html.is-locked body {
 .boot-dial line {
   stroke: rgba(143, 240, 168, 0.16);
   stroke-width: 1;
-  transition: stroke 0.25s;
+  transition: stroke 0.25s var(--ease);
 }
 .boot-dial line.on {
   stroke: #8ff0a8;
@@ -661,7 +754,7 @@ html.is-locked body {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  transition: color 0.3s, opacity 0.3s;
+  transition: color 0.3s var(--ease), opacity 0.3s var(--ease);
 }
 .boot-steps li b {
   font-weight: 500;
@@ -749,4 +842,41 @@ html[data-reduced-motion="1"] .boot-steps li.is-run b { animation: none; }
 @media (max-width: 360px) {
   .jet-nav .jet-wordmark-sub { display: none; }
   .jet-nav { padding: 20px 16px; }
+}
+
+/* ---------- sonic boom pressure ring ---------- */
+.shock-ring {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+.shock-ring i {
+  position: absolute;
+  left: var(--x, 50%);
+  top: var(--y, 50%);
+  width: 120vmax;
+  height: 120vmax;
+  margin: -60vmax 0 0 -60vmax;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 226, 180, 0.55);
+  box-shadow: 0 0 40px rgba(255, 190, 120, 0.25), inset 0 0 60px rgba(255, 210, 160, 0.18);
+  opacity: 0;
+  transform: scale(0.02);
+}
+.shock-ring.is-on i {
+  animation: shock-ring 1.25s var(--ease-out) both;
+}
+.shock-ring.is-on i:nth-child(2) {
+  animation-delay: 0.11s;
+  border-color: rgba(255, 236, 205, 0.32);
+}
+@keyframes shock-ring {
+  0% { opacity: 0; transform: scale(0.02); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1); }
+}
+html[data-reduced-motion="1"] .shock-ring {
+  display: none;
 }

@@ -6,7 +6,8 @@ import { CloudField } from "./clouds";
 import { buildMove, LEGS, STAGES, smootherstep, type Move } from "./camera-stages";
 import { ANCHORS, JetFx, type AnchorId } from "./jet-fx";
 import { FlightDirector, makePose, poseCamera, poseFromLook, type Pose } from "./flight-director";
-import { flight } from "./flight-store";
+import { BOOM_EVENT, flight, STATION_EVENT, type BoomDetail, type StationDetail } from "./flight-store";
+import { FootWordmark } from "./foot-wordmark";
 import { LightRig, type LightTarget } from "./light-rig";
 import { HistBackdrop } from "./hist-backdrop";
 import { ExhaustPlume } from "../site/exhaust-plume";
@@ -106,6 +107,13 @@ export class JetScene {
   private turnViz = new TurnViz();
   private rig!: LightRig;
   private backdrop = new HistBackdrop();
+  private wordmark = new FootWordmark();
+  private footEl: Element | null = null;
+  private footStageEl: Element | null = null;
+  private nozTmp = { x: 0, y: 0 };
+  private lastStation = "hero";
+  private boomArmed = true;
+  private wasOff = false;
   private lightTarget: LightTarget = { a: "storm" };
   private camPos = new THREE.Vector3();
   private projTmp = new THREE.Vector3();
@@ -216,7 +224,7 @@ export class JetScene {
   private addLights() {
     // hemi / moon-key / rim / fill / bounce, recoloured per section by the rig
     this.rig = new LightRig(this.scene, this.sky.material as THREE.ShaderMaterial, this.renderer);
-    this.scene.add(this.backdrop.mesh);
+    this.scene.add(this.backdrop.mesh, this.wordmark.mesh);
   }
 
   /** which palette the current station wants */
@@ -238,6 +246,9 @@ export class JetScene {
         break;
       case "var":
         lt.a = `var-${flight.variant.id}`;
+        break;
+      case "foot":
+        lt.a = "foot";
         break;
       default:
         lt.a = "storm";
@@ -301,6 +312,7 @@ export class JetScene {
       // keep a running move on schedule even off-screen, but skip GPU work
       if ((this.paused || this.director.offstage()) && !this.busy) {
         this.last = performance.now();
+        this.wasOff = true;
         return;
       }
       this.tick();
@@ -483,14 +495,50 @@ export class JetScene {
     if (this.director.station === "turn") flight.hud.g = tn;
     flight.hud.heading = ((THREE.MathUtils.radToDeg(-pose.yaw) % 360) + 360) % 360;
 
-    // per-section light + the history terrain plate
-    this.rig.update(this.scene, this.pickLight(), dt, r);
+    // per-section light + the history terrain plate (snap after an offstage gap,
+    // so the footer never shows the variants' light easing away)
+    this.rig.update(this.scene, this.pickLight(), dt, r || this.wasOff);
+    this.wasOff = false;
+    this.updateFoot();
+    this.signal();
     if (this.director.station === "turn") this.backdrop.preload();
     this.backdrop.update(this.director.histWeight, flight.hist.row, flight.hist.p, dt, r);
 
     this.clouds.update(this.travel, this.camera, this.jetRoot.position);
     this.render();
     this.adaptQuality(dt);
+  }
+
+  /** footer wordmark: rect from its DOM anchor, lit by the nozzle */
+  private updateFoot() {
+    if (this.director.station !== "foot") {
+      this.wordmark.update(null, null, 0, 0);
+      return;
+    }
+    if (!this.footEl?.isConnected) this.footEl = document.querySelector('[data-flight="foot"]');
+    if (!this.footStageEl?.isConnected) this.footStageEl = document.querySelector('[data-flight="foot-stage"]');
+    const rect = this.footEl ? this.footEl.getBoundingClientRect() : null;
+    const st = this.footStageEl?.getBoundingClientRect();
+    const vh = this.viewH;
+    const vis = st ? Math.min(1, Math.max(0, (vh - st.top) / (vh * 0.45))) : 1;
+    const noz = this.project("nozzle", this.nozTmp);
+    this.wordmark.update(rect, noz, 1, vis * vis * (3 - 2 * vis));
+  }
+
+  /** station handoffs + the sonic boom, as window events (sound + shock ring) */
+  private signal() {
+    const st = this.director.station;
+    if (st !== this.lastStation) {
+      const detail: StationDetail = { from: this.lastStation, to: st };
+      this.lastStation = st;
+      window.dispatchEvent(new CustomEvent(STATION_EVENT, { detail }));
+    }
+    if (st === "perf" && flight.perf > 3.6 && this.boomArmed) {
+      this.boomArmed = false;
+      const p = this.project("nose", this.nozTmp);
+      const detail: BoomDetail = { x: p ? p.x : this.viewW / 2, y: p ? p.y : this.viewH / 2 };
+      window.dispatchEvent(new CustomEvent(BOOM_EVENT, { detail }));
+    } else if (flight.perf < 3) this.boomArmed = true;
   }
 
   private clearColor = new THREE.Color("#050608");
@@ -529,6 +577,8 @@ export class JetScene {
     this.sky.visible = false;
     const bd = this.backdrop.mesh.visible;
     this.backdrop.mesh.visible = false;
+    const wm = this.wordmark.mesh.visible;
+    this.wordmark.mesh.visible = false;
     this.fx.effects.visible = false;
     const pg = this.plume.glow.visible;
     this.plume.glow.visible = false;
@@ -538,6 +588,7 @@ export class JetScene {
     this.scene.overrideMaterial = null;
     this.sky.visible = true;
     this.backdrop.mesh.visible = bd;
+    this.wordmark.mesh.visible = wm;
     this.fx.effects.visible = true;
     this.plume.glow.visible = pg;
     this.plume.setVisible(pg);
@@ -575,6 +626,7 @@ export class JetScene {
     this.viewW = w;
     this.viewH = h;
     this.backdrop.setViewport(w, h);
+    this.wordmark.setViewport(w, h);
     this.fx.setViewHeight(h * this.renderer.getPixelRatio());
     // portrait: less horizontal shift, lift the jet above the bottom captions
     this.shiftScale = a < 0.9 ? [0.15, 0.08] : [1, 0];
@@ -630,6 +682,7 @@ export class JetScene {
     this.plume.dispose();
     this.turnViz.dispose();
     this.backdrop.dispose();
+    this.wordmark.dispose();
     this.clouds.dispose();
     this.cloudRT.dispose();
     this.depthMat.dispose();

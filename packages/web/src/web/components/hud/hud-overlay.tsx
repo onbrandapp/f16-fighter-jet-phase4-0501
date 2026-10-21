@@ -10,6 +10,7 @@ const STATION_LABEL: Record<string, string> = {
   turn: "03 · Turn",
   hist: "04 · History",
   var: "05 · Variants",
+  foot: "",
   off: "",
 };
 

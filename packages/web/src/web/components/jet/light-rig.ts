@@ -57,6 +57,28 @@ const p = (o: Partial<Palette>): Palette => ({ ...STORM, ...o });
 
 export const PALETTES = {
   storm: STORM,
+  // Footer: night after the last sortie, moonlit from above, the burner warm behind
+  foot: p({
+    top: "#010204",
+    horizon: "#07080d",
+    bottom: "#010102",
+    glow: "#1b0d07",
+    glowDir: [0.9, 0.05, -0.4],
+    hemiSky: "#5a6680",
+    hemiGround: "#120a06",
+    hemi: 0.22,
+    key: "#b8c8e4",
+    keyI: 1.15,
+    keyPos: [-6, 18, -12],
+    rim: "#ff9a5a",
+    rimI: 1.25,
+    fill: "#46506a",
+    fillI: 0.26,
+    bounce: "#4a2a18",
+    bounceI: 0.45,
+    exposure: 0.86,
+    env: 0.2,
+  }),
   // Performance: clear, high and bright — the page's first "light" beat
   perf: p({
     top: "#08111d",

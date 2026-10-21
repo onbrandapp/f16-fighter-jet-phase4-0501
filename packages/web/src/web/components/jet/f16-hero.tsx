@@ -72,6 +72,7 @@ export function F16Hero({ onReady, nextId }: HeroProps) {
     scene
       .load()
       .then(() => {
+        document.documentElement.classList.add("has-webgl");
         setPhase("ready");
         onReadyRef.current?.();
       })

@@ -172,7 +172,7 @@
   letter-spacing: 0.1em;
   color: var(--c);
   text-transform: uppercase;
-  transition: opacity 0.3s;
+  transition: opacity 0.3s var(--ease);
 }
 .hud-callout.tone-amber {
   --c: var(--hud-amber);
@@ -290,7 +290,7 @@ html.has-reticle :is(input[type="text"], input[type="email"], textarea) {
 .reticle {
   width: 0;
   height: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s var(--ease);
   mix-blend-mode: normal;
 }
 .reticle-ring {
@@ -304,7 +304,7 @@ html.has-reticle :is(input[type="text"], input[type="email"], textarea) {
   box-shadow: 0 0 8px rgba(143, 240, 168, 0.25);
   transition:
     transform 0.25s var(--ease),
-    opacity 0.25s;
+    opacity 0.25s var(--ease);
 }
 .reticle-ring::before,
 .reticle-ring::after {
@@ -388,7 +388,7 @@ html.has-reticle :is(input[type="text"], input[type="email"], textarea) {
   letter-spacing: 0.2em;
   color: var(--hud-amber);
   opacity: 0;
-  transition: opacity 0.2s 0.08s;
+  transition: opacity 0.2s var(--ease) 0.08s;
 }
 .reticle-box.is-locked .reticle-tag {
   opacity: 1;
